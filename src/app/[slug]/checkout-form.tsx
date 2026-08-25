@@ -1,0 +1,199 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import { createOrder } from "@/lib/orders-actions";
+import { useCart } from "@/lib/cart-context";
+
+export default function CheckoutForm({
+  venueId,
+  accent,
+  tableNumber,
+  onSuccess,
+}: {
+  venueId: string;
+  accent: string;
+  tableNumber?: string;
+  onSuccess: (orderId: string) => void;
+}) {
+  const cart = useCart();
+  const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">("delivery");
+  const [address, setAddress] = useState("");
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const isDineIn = !!tableNumber;
+  // One id per checkout attempt (this form remounts fresh each time the cart
+  // sheet opens) — a retry/double-tap within the same attempt reuses it, so
+  // the server can de-dupe instead of creating a second order.
+  const [clientRequestId] = useState(() => crypto.randomUUID());
+
+  const action = createOrder.bind(null, venueId);
+  const [state, formAction, pending] = useActionState<
+    { error: string | null; ok?: boolean; orderId?: string },
+    FormData
+  >(
+    async (prevState, formData) => {
+      formData.set(
+        "items",
+        JSON.stringify(cart.items.map((i) => ({ dishId: i.dishId, name: i.name, price: i.price, qty: i.qty }))),
+      );
+      formData.set("client_request_id", clientRequestId);
+      formData.set("tg_init_data", window.Telegram?.WebApp?.initData ?? "");
+      const result = await action(prevState, formData);
+      if (result.ok && result.orderId) {
+        cart.clear();
+        onSuccess(result.orderId);
+      }
+      return result;
+    },
+    { error: null },
+  );
+
+  function locateMe() {
+    if (!navigator.geolocation) {
+      setLocationError("Геолокация не поддерживается этим браузером");
+      return;
+    }
+    setLocating(true);
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setAddress(`Мои координаты: https://maps.google.com/?q=${latitude.toFixed(6)},${longitude.toFixed(6)}`);
+        setLocating(false);
+      },
+      () => {
+        setLocationError("Не удалось определить местоположение — введите адрес вручную");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
+
+  return (
+    <form action={formAction} className="space-y-3">
+      <Field label="Ваше имя">
+        <input name="customer_name" required className="checkout-input" placeholder="Иван" />
+      </Field>
+      <Field label="Телефон">
+        <input name="phone" required className="checkout-input" placeholder="+998 90 123 45 67" />
+      </Field>
+
+      {isDineIn ? (
+        <>
+          <div className="rounded-xl border px-3.5 py-2.5 text-sm font-medium" style={{ borderColor: accent, color: accent, background: `${accent}14` }}>
+            Заказ за столом №{tableNumber}
+          </div>
+          <input type="hidden" name="fulfillment" value="dine_in" />
+          <input type="hidden" name="table_number" value={tableNumber} />
+        </>
+      ) : (
+        <>
+          <Field label="Способ получения">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setFulfillment("delivery")}
+                className="flex-1 rounded-xl border px-3 py-2 text-sm font-medium"
+                style={
+                  fulfillment === "delivery"
+                    ? { borderColor: accent, color: accent, background: `${accent}14` }
+                    : { borderColor: "#e7ddcd", color: "#8a7a63" }
+                }
+              >
+                Доставка
+              </button>
+              <button
+                type="button"
+                onClick={() => setFulfillment("pickup")}
+                className="flex-1 rounded-xl border px-3 py-2 text-sm font-medium"
+                style={
+                  fulfillment === "pickup"
+                    ? { borderColor: accent, color: accent, background: `${accent}14` }
+                    : { borderColor: "#e7ddcd", color: "#8a7a63" }
+                }
+              >
+                Самовывоз
+              </button>
+            </div>
+            <input type="hidden" name="fulfillment" value={fulfillment} />
+          </Field>
+
+          {fulfillment === "delivery" && (
+            <Field label="Адрес доставки">
+              <div className="flex gap-2">
+                <input
+                  name="address"
+                  required
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="checkout-input flex-1"
+                  placeholder="Улица, дом, квартира"
+                />
+                <button
+                  type="button"
+                  onClick={locateMe}
+                  disabled={locating}
+                  title="Определить моё местоположение"
+                  className="shrink-0 rounded-xl border px-3 text-base disabled:opacity-60"
+                  style={{ borderColor: accent, color: accent }}
+                >
+                  📍
+                </button>
+              </div>
+              {locationError && <p className="mt-1 text-xs text-red-500">{locationError}</p>}
+            </Field>
+          )}
+        </>
+      )}
+
+      <Field label="Промокод (необязательно)">
+        <input name="promo_code" className="checkout-input" placeholder="Например, WELCOME10" />
+      </Field>
+
+      <label className="flex items-center gap-2 text-xs text-[#5a4d3c]">
+        <input type="checkbox" name="use_points" />
+        Списать бонусные баллы (если есть на этот номер телефона)
+      </label>
+
+      <Field label="Комментарий (необязательно)">
+        <textarea name="comment" rows={2} className="checkout-input" />
+      </Field>
+
+      {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+
+      <button
+        type="submit"
+        disabled={pending}
+        className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+        style={{ background: accent }}
+      >
+        {pending ? "Отправляем..." : "Оформить заказ"}
+      </button>
+
+      <style jsx>{`
+        .checkout-input {
+          width: 100%;
+          border-radius: 0.75rem;
+          border: 1px solid #e7ddcd;
+          background: #fffdf9;
+          padding: 0.6rem 0.9rem;
+          font-size: 0.875rem;
+          color: #3a2f22;
+          outline: none;
+        }
+        .checkout-input:focus {
+          border-color: ${accent};
+        }
+      `}</style>
+    </form>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-[#8a7a63]">{label}</label>
+      {children}
+    </div>
+  );
+}

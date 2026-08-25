@@ -1,0 +1,23 @@
+{
+  "name": "menora-print-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Печатает чеки заказов Menora на кухонном чековом принтере (ESC/POS, USB) в реальном времени.",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "test-print": "node agent.js --test",
+    "build": "node build-exe.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
+    "dotenv": "^16.4.5",
+    "node-thermal-printer": "^4.4.4"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6"
+  }
+}
