@@ -2,7 +2,10 @@ import { redirect } from "next/navigation";
 import { LayoutGrid, Tags, UtensilsCrossed, QrCode, ClipboardList, Percent, Gift, Star } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { VenueSwitcher } from "@/components/venue-switcher";
+import { getOwnerVenueId, getOwnerVenues } from "@/lib/cabinet";
 import { logout } from "../login/actions";
+import { switchVenue } from "../venue-switcher-actions";
 
 export default async function CabinetLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -12,16 +15,8 @@ export default async function CabinetLayout({ children }: { children: React.Reac
 
   if (!user) redirect("/cabinet/login");
 
-  const { data: ownerRow } = await supabase
-    .from("venue_users")
-    .select("venue_id, venues(name, slug)")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (!ownerRow) redirect("/cabinet/login");
-
-  const venue = ownerRow.venues as unknown as { name: string; slug: string } | null;
+  const [venueId, venues] = await Promise.all([getOwnerVenueId(), getOwnerVenues()]);
+  const venue = venues.find((v) => v.id === venueId) ?? null;
 
   return (
     <DashboardShell
@@ -31,6 +26,7 @@ export default async function CabinetLayout({ children }: { children: React.Reac
         </>
       }
       subtitle={venue ? `${venue.name} · /${venue.slug}` : undefined}
+      venueSwitcher={<VenueSwitcher venues={venues} activeVenueId={venueId} switchAction={switchVenue} />}
       logoutAction={logout}
       navItems={[
         { href: "/cabinet/info", icon: <LayoutGrid size={16} />, label: "Инфо" },

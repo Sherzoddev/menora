@@ -13,12 +13,14 @@ export type DashboardNavItem = {
 export function DashboardShell({
   brand,
   subtitle,
+  venueSwitcher,
   navItems,
   logoutAction,
   children,
 }: {
   brand: React.ReactNode;
   subtitle?: React.ReactNode;
+  venueSwitcher?: React.ReactNode;
   navItems: DashboardNavItem[];
   logoutAction: () => void | Promise<void>;
   children: React.ReactNode;
@@ -51,7 +53,9 @@ export function DashboardShell({
         }`}
       >
         <div className="mb-1 px-2 text-lg font-semibold tracking-tight">{brand}</div>
-        {subtitle && <p className="mb-6 px-2 text-xs text-neutral-500">{subtitle}</p>}
+        {subtitle && <p className="mb-4 px-2 text-xs text-neutral-500">{subtitle}</p>}
+
+        {venueSwitcher}
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
           {navItems.map((item) => (
