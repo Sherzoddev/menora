@@ -63,7 +63,7 @@ const ru = {
       { title: "Списание склада", desc: "Проданные позиции сразу уменьшают остатки на складе Velora" },
     ],
     linkLabel: "Что такое Velora",
-    linkUrl: "https://velora.uz",
+    linkUrl: "https://velorauz.netlify.app",
   },
   comparison: {
     title: "Почему не бумажное меню",
@@ -178,7 +178,7 @@ const uz: typeof ru = {
       { title: "Ombordan yechish", desc: "Sotilgan mahsulotlar Velora omboridagi qoldiqni darhol kamaytiradi" },
     ],
     linkLabel: "Velora nima?",
-    linkUrl: "https://velora.uz",
+    linkUrl: "https://velorauz.netlify.app",
   },
   comparison: {
     title: "Nega qog'oz menyu emas",
