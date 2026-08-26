@@ -41,6 +41,30 @@ const ru = {
     { title: "Русский и узбекский", desc: "Гость сам переключает язык меню" },
     { title: "Без комиссий", desc: "Мы не берём процент с ваших заказов" },
   ],
+  telegramOrdering: {
+    eyebrow: "Не просто меню",
+    title: "Гость заказывает прямо в Telegram",
+    subtitle:
+      "QR-код открывает не только меню — гость выбирает блюда, оформляет доставку, самовывоз или заказ к столу и следит за статусом, всё внутри Telegram, без установки приложений.",
+    points: [
+      { title: "Доставка и самовывоз", desc: "Гость сам выбирает способ получения, указывает адрес или стол — заявка сразу у вас" },
+      { title: "Статус заказа", desc: "От «принят» до «в пути» — гость видит прогресс прямо в чате бота" },
+      { title: "Бонусные баллы", desc: "Программа лояльности работает автоматически при каждом заказе" },
+    ],
+  },
+  veloraIntegration: {
+    eyebrow: "Интеграция с кассой",
+    title: "Заказ из Menora сам открывает счёт в Velora",
+    subtitle:
+      "Если у заведения касса Velora — каждый заказ с сайта или из Telegram-бота мгновенно появляется у кассира открытым счётом, без ручного переноса и ошибок.",
+    points: [
+      { title: "Без двойного ввода", desc: "Кассиру не нужно вбивать заказ заново — он уже в кассе" },
+      { title: "Кассира зовут звуком", desc: "Заказ на доставку или самовывоз сразу помечается «готов к оплате»" },
+      { title: "Списание склада", desc: "Проданные позиции сразу уменьшают остатки на складе Velora" },
+    ],
+    linkLabel: "Что такое Velora",
+    linkUrl: "https://velora.uz",
+  },
   comparison: {
     title: "Почему не бумажное меню",
     items: [
@@ -132,6 +156,30 @@ const uz: typeof ru = {
     { title: "Rus va o'zbek tillari", desc: "Mehmon menyu tilini o'zi tanlaydi" },
     { title: "Komissiyasiz", desc: "Biz buyurtmalaringizdan foiz olmaymiz" },
   ],
+  telegramOrdering: {
+    eyebrow: "Shunchaki menyu emas",
+    title: "Mehmon to'g'ridan-to'g'ri Telegramda buyurtma beradi",
+    subtitle:
+      "QR-kod nafaqat menyuni ochadi — mehmon taomlarni tanlaydi, yetkazib berish, olib ketish yoki stolga buyurtma beradi va holatini kuzatadi, barchasi Telegram ichida, ilova o'rnatmasdan.",
+    points: [
+      { title: "Yetkazib berish va olib ketish", desc: "Mehmon olish usulini o'zi tanlaydi, manzil yoki stolni ko'rsatadi — buyurtma darhol sizda" },
+      { title: "Buyurtma holati", desc: "\"Qabul qilindi\"dan \"yo'lda\"gacha — mehmon jarayonni bot chatida ko'radi" },
+      { title: "Bonus ballar", desc: "Har bir buyurtmada sodiqlik dasturi avtomatik ishlaydi" },
+    ],
+  },
+  veloraIntegration: {
+    eyebrow: "Kassa bilan integratsiya",
+    title: "Menoradagi buyurtma Velorada o'zi hisob ochadi",
+    subtitle:
+      "Agar muassasada Velora kassasi bo'lsa — saytdan yoki Telegram-botdan tushgan har bir buyurtma kassirda darhol ochiq hisob sifatida paydo bo'ladi, qo'lda kiritmasdan va xatosiz.",
+    points: [
+      { title: "Ikki marta kiritish shart emas", desc: "Kassir buyurtmani qayta kiritishi shart emas — u kassada allaqachon bor" },
+      { title: "Kassirni tovush chaqiradi", desc: "Yetkazib berish yoki olib ketish buyurtmasi darhol \"to'lovga tayyor\" deb belgilanadi" },
+      { title: "Ombordan yechish", desc: "Sotilgan mahsulotlar Velora omboridagi qoldiqni darhol kamaytiradi" },
+    ],
+    linkLabel: "Velora nima?",
+    linkUrl: "https://velora.uz",
+  },
   comparison: {
     title: "Nega qog'oz menyu emas",
     items: [
