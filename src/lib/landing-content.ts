@@ -3,7 +3,7 @@
 
 export type Lang = "ru" | "uz";
 
-export const demoSlug = "magicstreet550";
+export const demoSlug = "test";
 
 const ru = {
   hero: {
