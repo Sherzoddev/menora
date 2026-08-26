@@ -13,11 +13,133 @@ $ConfigPath = Join-Path $RootDir "config.json"
 $AgentExe = Join-Path $RootDir "menora-print.exe"
 $LogPath = Join-Path $RootDir "agent.log"
 
+# ---------- Оформление ----------
+$ColorBg = [System.Drawing.Color]::FromArgb(0xFA, 0xF8, 0xF5)
+$ColorCard = [System.Drawing.Color]::White
+$ColorText = [System.Drawing.Color]::FromArgb(0x2A, 0x24, 0x1D)
+$ColorMuted = [System.Drawing.Color]::FromArgb(0x8A, 0x80, 0x74)
+$ColorAccent = [System.Drawing.Color]::FromArgb(0xD9, 0x77, 0x06)
+$ColorAccentDark = [System.Drawing.Color]::FromArgb(0xB4, 0x5F, 0x04)
+$ColorBorder = [System.Drawing.Color]::FromArgb(0xE7, 0xE1, 0xD8)
+$ColorOk = [System.Drawing.Color]::FromArgb(0x15, 0x80, 0x3D)
+$ColorErr = [System.Drawing.Color]::FromArgb(0xC0, 0x2B, 0x1D)
+$FontFamily = "Segoe UI"
+
+function New-Label([string]$text, [int]$x, [int]$y, [int]$w = 380, [System.Drawing.Color]$color = $ColorText, [single]$size = 9.5, [System.Drawing.FontStyle]$style = [System.Drawing.FontStyle]::Regular) {
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = $text
+    $l.Location = New-Object System.Drawing.Point($x, $y)
+    $l.Size = New-Object System.Drawing.Size($w, 20)
+    $l.ForeColor = $color
+    $l.Font = New-Object System.Drawing.Font($FontFamily, $size, $style)
+    $l.BackColor = [System.Drawing.Color]::Transparent
+    return $l
+}
+
+function New-TextBox([int]$x, [int]$y, [int]$w, [bool]$password = $false) {
+    $t = New-Object System.Windows.Forms.TextBox
+    $t.Location = New-Object System.Drawing.Point($x, $y)
+    $t.Size = New-Object System.Drawing.Size($w, 26)
+    $t.Font = New-Object System.Drawing.Font($FontFamily, 9.5)
+    $t.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    if ($password) { $t.UseSystemPasswordChar = $true }
+    return $t
+}
+
+function New-FlatButton([string]$text, [int]$x, [int]$y, [int]$w, [int]$h, [bool]$primary = $false) {
+    $b = New-Object System.Windows.Forms.Button
+    $b.Text = $text
+    $b.Location = New-Object System.Drawing.Point($x, $y)
+    $b.Size = New-Object System.Drawing.Size($w, $h)
+    $b.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $b.FlatAppearance.BorderSize = if ($primary) { 0 } else { 1 }
+    $b.FlatAppearance.BorderColor = $ColorBorder
+    $b.Font = New-Object System.Drawing.Font($FontFamily, 9.5, [System.Drawing.FontStyle]::Regular)
+    $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+    if ($primary) {
+        $b.BackColor = $ColorAccent
+        $b.ForeColor = [System.Drawing.Color]::White
+        $b.FlatAppearance.MouseOverBackColor = $ColorAccentDark
+    } else {
+        $b.BackColor = [System.Drawing.Color]::White
+        $b.ForeColor = $ColorText
+        $b.FlatAppearance.MouseOverBackColor = $ColorBg
+    }
+    return $b
+}
+
+# Кнопка-переключатель транспорта (Windows/USB/Bluetooth) — три штуки в
+# ряд, вид как у сегмент-контрола: активная закрашена акцентом.
+function New-ToggleButton([string]$text, [int]$x, [int]$y, [int]$w) {
+    $b = New-Object System.Windows.Forms.Button
+    $b.Text = $text
+    $b.Tag = $false
+    $b.Location = New-Object System.Drawing.Point($x, $y)
+    $b.Size = New-Object System.Drawing.Size($w, 32)
+    $b.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $b.FlatAppearance.BorderSize = 1
+    $b.FlatAppearance.BorderColor = $ColorBorder
+    $b.Font = New-Object System.Drawing.Font($FontFamily, 9.5)
+    $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $b.BackColor = [System.Drawing.Color]::White
+    $b.ForeColor = $ColorMuted
+    return $b
+}
+
+function Set-ToggleActive($btn, [bool]$active) {
+    $btn.Tag = $active
+    if ($active) {
+        $btn.BackColor = $ColorAccent
+        $btn.ForeColor = [System.Drawing.Color]::White
+        $btn.Font = New-Object System.Drawing.Font($FontFamily, 9.5, [System.Drawing.FontStyle]::Bold)
+    } else {
+        $btn.BackColor = [System.Drawing.Color]::White
+        $btn.ForeColor = $ColorMuted
+        $btn.Font = New-Object System.Drawing.Font($FontFamily, 9.5)
+    }
+}
+
+# ---------- Кодировки — все, что понимает node-thermal-printer. Кириллица
+# (в т.ч. украинская/казахская) — в начале списка, остальное ниже. ----------
+$CHARSETS = @(
+    @{ Key = "PC866_CYRILLIC2"; Label = "Кириллица — PC866 (самая частая)" }
+    @{ Key = "WPC1251_CYRILLIC"; Label = "Кириллица — Windows-1251" }
+    @{ Key = "PC855_CYRILLIC"; Label = "Кириллица — PC855" }
+    @{ Key = "PC1125_UKRANIAN"; Label = "Кириллица — украинская (PC1125)" }
+    @{ Key = "KZ1048_KAZAKHSTAN"; Label = "Кириллица — казахская (KZ1048)" }
+    @{ Key = "PC437_USA"; Label = "Латиница — PC437 (US)" }
+    @{ Key = "WPC1252"; Label = "Латиница — Windows-1252" }
+    @{ Key = "PC850_MULTILINGUAL"; Label = "Латиница — PC850" }
+    @{ Key = "PC852_LATIN2"; Label = "Латиница — PC852" }
+    @{ Key = "ISO8859_2_LATIN2"; Label = "Латиница — ISO-8859-2" }
+    @{ Key = "WPC1250_LATIN2"; Label = "Латиница — Windows-1250" }
+    @{ Key = "WPC1254_TURKISH"; Label = "Турецкая — Windows-1254" }
+    @{ Key = "PC857_TURKISH"; Label = "Турецкая — PC857" }
+    @{ Key = "WPC1258_VIETNAMESE"; Label = "Вьетнамская — Windows-1258" }
+    @{ Key = "WPC1256_ARABIC"; Label = "Арабская — Windows-1256" }
+    @{ Key = "WPC1255_HEBREW"; Label = "Иврит — Windows-1255" }
+)
+
 function Get-PrinterList {
     try {
         Get-Printer | Select-Object -ExpandProperty Name
     } catch {
         @()
+    }
+}
+
+# Список USB/Bluetooth-устройств спрашиваем у самого агента (--list-devices)
+# — он и так умеет их перечислять для печати, дублировать эту логику в
+# PowerShell незачем.
+function Get-AgentDeviceList([string]$transport) {
+    try {
+        $json = & $AgentExe --list-devices $transport 2>$null
+        if (-not $json) { return @() }
+        $parsed = $json | ConvertFrom-Json
+        if ($null -eq $parsed) { return @() }
+        return @($parsed)
+    } catch {
+        return @()
     }
 }
 
@@ -39,12 +161,49 @@ function Load-ExistingConfig {
     return $null
 }
 
+# «Запускать при включении» — ярлык в папке автозагрузки Windows. То же
+# самое, что раньше делал install-autostart.bat отдельным шагом — теперь
+# это просто галочка в самом окне, включённая по умолчанию.
+function Set-Autostart([bool]$on) {
+    $startupDir = [Environment]::GetFolderPath("Startup")
+    $linkPath = Join-Path $startupDir "MenoraPrintAgent.lnk"
+    if ($on) {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($linkPath)
+        $shortcut.TargetPath = Join-Path $RootDir "Menora.vbs"
+        $shortcut.WorkingDirectory = $RootDir
+        $shortcut.WindowStyle = 7
+        $shortcut.Save()
+    } elseif (Test-Path $linkPath) {
+        Remove-Item $linkPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Ярлык в меню «Пуск» — не для автозапуска, а чтобы окно настроек всегда
+# можно было найти и открыть заново (Пуск → «Menora»), даже если значок в
+# трее потерялся в скрытых иконках. Ставится один раз при первом сохранении.
+function Ensure-StartMenuShortcut {
+    $startMenuDir = [Environment]::GetFolderPath("Programs")
+    $linkPath = Join-Path $startMenuDir "Menora — печать чеков.lnk"
+    if (Test-Path $linkPath) { return }
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($linkPath)
+        $shortcut.TargetPath = Join-Path $RootDir "Menora.vbs"
+        $shortcut.Arguments = "--setup"
+        $shortcut.WorkingDirectory = $RootDir
+        $shortcut.WindowStyle = 1
+        $shortcut.Description = "Открыть настройки печати Menora"
+        $shortcut.Save()
+    } catch {
+        # Не критично — просто не будет ярлыка в Пуске, трей всё равно работает.
+    }
+}
+
 # Запускает $ScriptBlock в фоновом задании (отдельный процесс PowerShell),
-# чтобы окно никогда не "замерзало" — ни на Get-Printer/Set-Printer (может
-# зависнуть, если диспетчер печати сам завис — именно так и случилось с
-# зависшим принтером в реальном тесте), ни на ожидании самого принтера.
-# $OnDone($result) вызывается на UI-потоке, когда задание завершится или
-# истечёт TimeoutSec (тогда $result будет $null).
+# чтобы окно никогда не "замерзало" — печать/расшарка иногда зависают, если
+# сам принтер или диспетчер печати завис. $OnDone($result) вызывается на
+# UI-потоке по завершении задания или по истечении TimeoutSec ($result = $null).
 function Invoke-Background {
     param(
         [ScriptBlock]$ScriptBlock,
@@ -75,223 +234,286 @@ function Invoke-Background {
     $timer.Start()
 }
 
-# Тело фонового задания: расшарить принтер (если ещё не расшарен) и,
-# опционально, сразу отправить тестовую печать. Всё внутри одного задания,
-# чтобы не плодить несколько окон PowerShell подряд.
-$SharePrinterJob = {
-    param($PrinterName, $ConfigPath, $AgentExe, $LogPath, $ExistingJson, $RunTest)
-
-    $shareOk = $true
-    $shareName = $PrinterName
-    $shareError = $null
-    try {
-        $p = Get-Printer -Name $PrinterName -ErrorAction Stop
-        if ($p.Shared -and $p.ShareName) {
-            $shareName = $p.ShareName
-        } else {
-            $clean = ($PrinterName -replace '[^A-Za-z0-9]', '')
-            $shareName = $clean.Substring(0, [Math]::Min(30, $clean.Length))
-            if (-not $shareName) { $shareName = "MenoraPrinter" }
-            Set-Printer -Name $PrinterName -Shared $true -ShareName $shareName -ErrorAction Stop
-        }
-    } catch {
-        $shareOk = $false
-        $shareError = $_.Exception.Message
-    }
-
-    $merged = @{}
-    if ($ExistingJson) {
-        ($ExistingJson | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $merged[$_.Name] = $_.Value }
-    }
-    $merged["PRINTER_NAME"] = $shareName
-    Set-Content -Path $ConfigPath -Value ($merged | ConvertTo-Json) -Encoding UTF8
-
-    $exitCode = $null
-    if ($RunTest) {
-        $p2 = Start-Process -FilePath $AgentExe -ArgumentList "--test" -WindowStyle Hidden -PassThru -Wait `
-            -RedirectStandardError "$LogPath.testerr"
-        $exitCode = $p2.ExitCode
-    }
-
-    [pscustomobject]@{
-        ShareOk    = $shareOk
-        ShareName  = $shareName
-        ShareError = $shareError
-        ExitCode   = $exitCode
-    }
+# Тело фонового задания для Windows-транспорта: расшарка сейчас не нужна
+# (RAW-печать работает и с нерасшаренным принтером — см. printer-transport.js),
+# но список принтеров и тестовая печать всё равно через задание, чтобы не
+# подвесить окно, если сам принтер/спулер завис.
+$TestPrintJob = {
+    param($AgentExe, $ConfigPath, $LogPath, $ConfigJson)
+    # Set-Content -Encoding UTF8 в Windows PowerShell 5.1 пишет BOM, а
+    # JSON.parse в Node не умеет читать JSON с BOM (тихо падает — agent.js
+    # тогда считает конфиг пустым и просит настройку заново). Пишем сами,
+    # без BOM.
+    [System.IO.File]::WriteAllText($ConfigPath, $ConfigJson, (New-Object System.Text.UTF8Encoding $false))
+    $p = Start-Process -FilePath $AgentExe -ArgumentList "--test" -WindowStyle Hidden -PassThru -Wait `
+        -RedirectStandardError "$LogPath.testerr"
+    [pscustomobject]@{ ExitCode = $p.ExitCode }
 }
 
 function Show-SetupForm {
     $existing = Load-ExistingConfig
-    $existingJson = if ($existing) { $existing | ConvertTo-Json } else { $null }
 
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "Menora — печать чеков"
-    $form.Size = New-Object System.Drawing.Size(420, 400)
+    $form.Text = "Menora — печать на кухню"
+    $form.Size = New-Object System.Drawing.Size(460, 620)
     $form.StartPosition = "CenterScreen"
     $form.FormBorderStyle = "FixedDialog"
     $form.MaximizeBox = $false
+    $form.BackColor = $ColorBg
+    $form.Font = New-Object System.Drawing.Font($FontFamily, 9.5)
 
-    $y = 20
-    $labelEmail = New-Object System.Windows.Forms.Label
-    $labelEmail.Text = "Email от кабинета Menora:"
-    $labelEmail.Location = New-Object System.Drawing.Point(20, $y)
-    $labelEmail.AutoSize = $true
-    $form.Controls.Add($labelEmail)
+    # ---- Шапка ----
+    $header = New-Object System.Windows.Forms.Panel
+    $header.Location = New-Object System.Drawing.Point(0, 0)
+    $header.Size = New-Object System.Drawing.Size(460, 64)
+    $header.BackColor = $ColorAccent
+    $form.Controls.Add($header)
+
+    $title = New-Label "Menora" 20 12 300 ([System.Drawing.Color]::White) 15 ([System.Drawing.FontStyle]::Bold)
+    $header.Controls.Add($title)
+    $subtitle = New-Label "Печать заказов на кухонном принтере" 20 36 400 ([System.Drawing.Color]::FromArgb(255,255,255)) 9
+    $header.Controls.Add($subtitle)
+
+    $y = 80
+
+    # ---- Подключение ----
+    $form.Controls.Add((New-Label "ПОДКЛЮЧЕНИЕ" 20 $y 300 $ColorMuted 8.5 ([System.Drawing.FontStyle]::Bold)))
     $y += 22
-    $inputEmail = New-Object System.Windows.Forms.TextBox
-    $inputEmail.Location = New-Object System.Drawing.Point(20, $y)
-    $inputEmail.Size = New-Object System.Drawing.Size(360, 24)
+    $form.Controls.Add((New-Label "Email от кабинета Menora" 20 $y))
+    $y += 20
+    $inputEmail = New-TextBox 20 $y 400
     if ($existing.CABINET_EMAIL) { $inputEmail.Text = $existing.CABINET_EMAIL }
     $form.Controls.Add($inputEmail)
+    $y += 34
 
-    $y += 36
-    $labelPass = New-Object System.Windows.Forms.Label
-    $labelPass.Text = "Пароль:"
-    $labelPass.Location = New-Object System.Drawing.Point(20, $y)
-    $labelPass.AutoSize = $true
-    $form.Controls.Add($labelPass)
-    $y += 22
-    $inputPass = New-Object System.Windows.Forms.TextBox
-    $inputPass.Location = New-Object System.Drawing.Point(20, $y)
-    $inputPass.Size = New-Object System.Drawing.Size(360, 24)
-    $inputPass.UseSystemPasswordChar = $true
+    $form.Controls.Add((New-Label "Пароль" 20 $y))
+    $y += 20
+    $inputPass = New-TextBox 20 $y 400 $true
     if ($existing.CABINET_PASSWORD) { $inputPass.Text = $existing.CABINET_PASSWORD }
     $form.Controls.Add($inputPass)
+    $y += 34
 
-    $y += 36
-    $labelSlug = New-Object System.Windows.Forms.Label
-    $labelSlug.Text = "Ссылка на ваше меню (или slug):"
-    $labelSlug.Location = New-Object System.Drawing.Point(20, $y)
-    $labelSlug.AutoSize = $true
-    $form.Controls.Add($labelSlug)
-    $y += 22
-    $inputSlug = New-Object System.Windows.Forms.TextBox
-    $inputSlug.Location = New-Object System.Drawing.Point(20, $y)
-    $inputSlug.Size = New-Object System.Drawing.Size(360, 24)
+    $form.Controls.Add((New-Label "Ссылка на ваше меню (или slug)" 20 $y))
+    $y += 20
+    $inputSlug = New-TextBox 20 $y 400
     if ($existing.VENUE_SLUG) { $inputSlug.Text = $existing.VENUE_SLUG }
     $form.Controls.Add($inputSlug)
-
-    $y += 36
-    $labelPrinter = New-Object System.Windows.Forms.Label
-    $labelPrinter.Text = "Принтер:"
-    $labelPrinter.Location = New-Object System.Drawing.Point(20, $y)
-    $labelPrinter.AutoSize = $true
-    $form.Controls.Add($labelPrinter)
-    $y += 22
-    $comboPrinter = New-Object System.Windows.Forms.ComboBox
-    $comboPrinter.Location = New-Object System.Drawing.Point(20, $y)
-    $comboPrinter.Size = New-Object System.Drawing.Size(280, 24)
-    $comboPrinter.DropDownStyle = "DropDownList"
-    $printers = Get-PrinterList
-    foreach ($p in $printers) { [void]$comboPrinter.Items.Add($p) }
-    if ($existing.PRINTER_NAME -and $comboPrinter.Items.Contains($existing.PRINTER_NAME)) {
-        $comboPrinter.SelectedItem = $existing.PRINTER_NAME
-    } elseif ($comboPrinter.Items.Count -gt 0) {
-        $comboPrinter.SelectedIndex = 0
-    }
-    $form.Controls.Add($comboPrinter)
-
-    $btnRefresh = New-Object System.Windows.Forms.Button
-    $btnRefresh.Text = "Обновить"
-    $btnRefresh.Location = New-Object System.Drawing.Point(306, ($y - 1))
-    $btnRefresh.Size = New-Object System.Drawing.Size(74, 26)
-    $btnRefresh.Add_Click({
-        $comboPrinter.Items.Clear()
-        foreach ($p in (Get-PrinterList)) { [void]$comboPrinter.Items.Add($p) }
-        if ($comboPrinter.Items.Count -gt 0) { $comboPrinter.SelectedIndex = 0 }
-    })
-    $form.Controls.Add($btnRefresh)
-
     $y += 40
-    $statusLabel = New-Object System.Windows.Forms.Label
-    $statusLabel.Location = New-Object System.Drawing.Point(20, $y)
-    $statusLabel.Size = New-Object System.Drawing.Size(360, 40)
-    $statusLabel.ForeColor = [System.Drawing.Color]::DarkRed
+
+    $sep1 = New-Object System.Windows.Forms.Panel
+    $sep1.Location = New-Object System.Drawing.Point(20, $y)
+    $sep1.Size = New-Object System.Drawing.Size(400, 1)
+    $sep1.BackColor = $ColorBorder
+    $form.Controls.Add($sep1)
+    $y += 14
+
+    # ---- Принтер: транспорт ----
+    $form.Controls.Add((New-Label "ПРИНТЕР" 20 $y 300 $ColorMuted 8.5 ([System.Drawing.FontStyle]::Bold)))
+    $y += 22
+
+    $btnW = New-ToggleButton "Windows" 20 $y 126
+    $btnUsb = New-ToggleButton "USB" 150 $y 126
+    $btnBt = New-ToggleButton "Bluetooth" 280 $y 140
+    $form.Controls.Add($btnW); $form.Controls.Add($btnUsb); $form.Controls.Add($btnBt)
+    $y += 42
+
+    $hintLabel = New-Label "" 20 $y 400 $ColorMuted 8.5
+    $form.Controls.Add($hintLabel)
+    $y += 18
+
+    $comboDevice = New-Object System.Windows.Forms.ComboBox
+    $comboDevice.Location = New-Object System.Drawing.Point(20, $y)
+    $comboDevice.Size = New-Object System.Drawing.Size(300, 26)
+    $comboDevice.DropDownStyle = "DropDownList"
+    $comboDevice.Font = New-Object System.Drawing.Font($FontFamily, 9.5)
+    $form.Controls.Add($comboDevice)
+
+    $btnRefresh = New-FlatButton "Обновить" 326 $y 94 26
+    $form.Controls.Add($btnRefresh)
+    $y += 36
+
+    $comboCharset = New-Object System.Windows.Forms.ComboBox
+    $comboCharset.Location = New-Object System.Drawing.Point(20, $y)
+    $comboCharset.Size = New-Object System.Drawing.Size(400, 26)
+    $comboCharset.DropDownStyle = "DropDownList"
+    $comboCharset.Font = New-Object System.Drawing.Font($FontFamily, 9.5)
+    foreach ($c in $CHARSETS) { [void]$comboCharset.Items.Add($c.Label) }
+    $comboCharset.SelectedIndex = 0
+    $form.Controls.Add($comboCharset)
+    $y += 40
+
+    # Данные по устройствам на каждый транспорт держим отдельно — переключая
+    # вкладку, не теряем то, что уже выбрано на другой.
+    $deviceState = @{
+        windows = @{ items = @(); selectedLabel = $null }
+        usb = @{ items = @(); selectedLabel = $null }
+        bluetooth = @{ items = @(); selectedLabel = $null }
+    }
+    $currentTransport = "windows"
+
+    function Refresh-DeviceList([string]$transport, [string]$preselect = $null) {
+        $comboDevice.Items.Clear()
+        if ($transport -eq "windows") {
+            $names = Get-PrinterList
+            $deviceState.windows.items = @($names | ForEach-Object { @{ label = $_; value = $_ } })
+        } elseif ($transport -eq "usb") {
+            $devs = Get-AgentDeviceList "usb"
+            $deviceState.usb.items = @($devs | ForEach-Object { @{ label = $_.label; value = "$($_.vendorId):$($_.productId)" } })
+        } else {
+            $ports = Get-AgentDeviceList "bluetooth"
+            $deviceState.bluetooth.items = @($ports | ForEach-Object { @{ label = $_.label; value = $_.path } })
+        }
+        $items = $deviceState[$transport].items
+        foreach ($it in $items) { [void]$comboDevice.Items.Add($it.label) }
+        if ($items.Count -eq 0) {
+            $comboDevice.Items.Add("(устройства не найдены)")
+            $comboDevice.SelectedIndex = 0
+        } else {
+            $idx = 0
+            if ($preselect) {
+                for ($i = 0; $i -lt $items.Count; $i++) { if ($items[$i].value -eq $preselect) { $idx = $i; break } }
+            }
+            $comboDevice.SelectedIndex = $idx
+        }
+    }
+
+    function Select-Transport([string]$transport) {
+        $currentTransport = $transport
+        Set-ToggleActive $btnW ($transport -eq "windows")
+        Set-ToggleActive $btnUsb ($transport -eq "usb")
+        Set-ToggleActive $btnBt ($transport -eq "bluetooth")
+        $hintLabel.Text = switch ($transport) {
+            "windows" { "Принтер уже установлен в Windows (Устройства и принтеры)." }
+            "usb" { "Печать напрямую в USB, в обход Windows — надёжнее для дешёвых принтеров." }
+            "bluetooth" { "Принтер уже сопряжён с Windows по Bluetooth (создан COM-порт)." }
+        }
+        $pre = $null
+        if ($existing -and $existing.PRINTER_TRANSPORT -eq $transport) {
+            $pre = switch ($transport) {
+                "windows" { $existing.PRINTER_NAME }
+                "usb" { "$($existing.PRINTER_USB_VENDOR):$($existing.PRINTER_USB_PRODUCT)" }
+                "bluetooth" { $existing.PRINTER_SERIAL_PATH }
+            }
+        }
+        Refresh-DeviceList $transport $pre
+    }
+
+    $btnW.Add_Click({ Select-Transport "windows" })
+    $btnUsb.Add_Click({ Select-Transport "usb" })
+    $btnBt.Add_Click({ Select-Transport "bluetooth" })
+    $btnRefresh.Add_Click({ Refresh-DeviceList $currentTransport })
+
+    $initialTransport = if ($existing.PRINTER_TRANSPORT) { $existing.PRINTER_TRANSPORT } else { "windows" }
+    Select-Transport $initialTransport
+    if ($existing.PRINTER_CHARACTER_SET) {
+        for ($i = 0; $i -lt $CHARSETS.Count; $i++) { if ($CHARSETS[$i].Key -eq $existing.PRINTER_CHARACTER_SET) { $comboCharset.SelectedIndex = $i; break } }
+    }
+
+    $sep2 = New-Object System.Windows.Forms.Panel
+    $sep2.Location = New-Object System.Drawing.Point(20, $y)
+    $sep2.Size = New-Object System.Drawing.Size(400, 1)
+    $sep2.BackColor = $ColorBorder
+    $form.Controls.Add($sep2)
+    $y += 14
+
+    $chkAutostart = New-Object System.Windows.Forms.CheckBox
+    $chkAutostart.Text = "Запускать при включении компьютера"
+    $chkAutostart.Location = New-Object System.Drawing.Point(20, $y)
+    $chkAutostart.Size = New-Object System.Drawing.Size(400, 24)
+    $chkAutostart.Font = New-Object System.Drawing.Font($FontFamily, 9.5)
+    $chkAutostart.ForeColor = $ColorText
+    $chkAutostart.Checked = $true
+    $form.Controls.Add($chkAutostart)
+    $y += 32
+
+    $statusLabel = New-Label "" 20 $y 400 $ColorErr 8.5
+    $statusLabel.Size = New-Object System.Drawing.Size(400, 36)
     $form.Controls.Add($statusLabel)
+    $y += 42
 
-    $y += 46
-    $btnTest = New-Object System.Windows.Forms.Button
-    $btnTest.Text = "Тестовая печать"
-    $btnTest.Location = New-Object System.Drawing.Point(20, $y)
-    $btnTest.Size = New-Object System.Drawing.Size(170, 32)
+    $btnTest = New-FlatButton "Тестовая печать" 20 $y 190 34 $false
+    $btnSave = New-FlatButton "Сохранить и запустить" 230 $y 190 34 $true
     $form.Controls.Add($btnTest)
-
-    $btnSave = New-Object System.Windows.Forms.Button
-    $btnSave.Text = "Сохранить и запустить"
-    $btnSave.Location = New-Object System.Drawing.Point(200, $y)
-    $btnSave.Size = New-Object System.Drawing.Size(180, 32)
     $form.Controls.Add($btnSave)
 
-    function Set-Busy([bool]$busy, [string]$text) {
+    function Get-SelectedDeviceValue {
+        $idx = $comboDevice.SelectedIndex
+        if ($idx -lt 0) { return $null }
+        $items = $deviceState[$currentTransport].items
+        if ($idx -ge $items.Count) { return $null }
+        return $items[$idx].value
+    }
+
+    function Build-Config {
+        $cfg = @{}
+        if ($existing) { $existing.PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value } }
+        $cfg["CABINET_EMAIL"] = $inputEmail.Text.Trim()
+        $cfg["CABINET_PASSWORD"] = $inputPass.Text
+        $cfg["VENUE_SLUG"] = ($inputSlug.Text.Trim() -replace '.*/([a-zA-Z0-9-]+)/?$', '$1')
+        $cfg["PRINTER_TRANSPORT"] = $currentTransport
+        $cfg["PRINTER_CHARACTER_SET"] = $CHARSETS[$comboCharset.SelectedIndex].Key
+        $cfg.Remove("PRINTER_NAME"); $cfg.Remove("PRINTER_USB_VENDOR"); $cfg.Remove("PRINTER_USB_PRODUCT"); $cfg.Remove("PRINTER_SERIAL_PATH")
+        $value = Get-SelectedDeviceValue
+        if ($currentTransport -eq "windows") {
+            $cfg["PRINTER_NAME"] = $value
+        } elseif ($currentTransport -eq "usb") {
+            if ($value) { $parts = $value -split ":"; $cfg["PRINTER_USB_VENDOR"] = $parts[0]; $cfg["PRINTER_USB_PRODUCT"] = $parts[1] }
+        } else {
+            $cfg["PRINTER_SERIAL_PATH"] = $value
+        }
+        return $cfg
+    }
+
+    function Set-Busy([bool]$busy, [string]$text, [bool]$isError = $true) {
         $btnTest.Enabled = -not $busy
         $btnSave.Enabled = -not $busy
         $btnRefresh.Enabled = -not $busy
-        $statusLabel.ForeColor = [System.Drawing.Color]::DarkRed
+        $statusLabel.ForeColor = if ($isError) { $ColorErr } else { $ColorOk }
         $statusLabel.Text = $text
     }
 
     $btnTest.Add_Click({
-        if (-not $comboPrinter.SelectedItem) {
-            $statusLabel.Text = "Выберите принтер."
+        $value = Get-SelectedDeviceValue
+        if (-not $value) {
+            Set-Busy $false "Устройство не выбрано или не найдено." $true
             return
         }
-        Set-Busy $true "Печатаю..."
-        Invoke-Background -ScriptBlock $SharePrinterJob `
-            -ArgumentList @($comboPrinter.SelectedItem, $ConfigPath, $AgentExe, $LogPath, $existingJson, $true) `
-            -OnDone {
-                param($result)
-                Set-Busy $false ""
-                if (-not $result) {
-                    $statusLabel.Text = "Принтер не отвечает (таймаут). Проверьте кабель и что принтер включён."
-                    return
-                }
-                if (-not $result.ShareOk) {
-                    [System.Windows.Forms.MessageBox]::Show(
-                        "Не удалось автоматически расшарить принтер ($($result.ShareError)).`n`nЗапустите Menora.vbs от имени администратора, либо расшарьте принтер вручную: Панель управления -> Устройства и принтеры -> свойства принтера -> вкладка Доступ.",
-                        "Menora", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-                }
-                if ($result.ExitCode -eq 0) {
-                    $statusLabel.ForeColor = [System.Drawing.Color]::DarkGreen
-                    $statusLabel.Text = "Тестовый чек отправлен на печать."
-                } else {
-                    $statusLabel.ForeColor = [System.Drawing.Color]::DarkRed
-                    $statusLabel.Text = "Не удалось напечатать. Проверьте принтер."
-                }
+        Set-Busy $true "Печатаю..." $false
+        $cfg = Build-Config
+        $json = ($cfg | ConvertTo-Json)
+        Invoke-Background -ScriptBlock $TestPrintJob -ArgumentList @($AgentExe, $ConfigPath, $LogPath, $json) -OnDone {
+            param($result)
+            if (-not $result) {
+                Set-Busy $false "Принтер не отвечает (таймаут). Проверьте подключение." $true
+                return
             }
+            if ($result.ExitCode -eq 0) {
+                Set-Busy $false "Тестовый талон отправлен на печать." $false
+            } else {
+                Set-Busy $false "Не удалось напечатать. Проверьте принтер и agent.log.testerr." $true
+            }
+        }
     })
 
     $btnSave.Add_Click({
-        if (-not $inputEmail.Text -or -not $inputPass.Text -or -not $inputSlug.Text -or -not $comboPrinter.SelectedItem) {
-            $statusLabel.Text = "Заполните все поля."
+        if (-not $inputEmail.Text -or -not $inputPass.Text -or -not $inputSlug.Text) {
+            Set-Busy $false "Заполните email, пароль и ссылку на меню." $true
             return
         }
-        Set-Busy $true "Сохраняю..."
-        # Логин/пароль/slug сохраняем сразу в JSON, который уйдёт в задание —
-        # PRINTER_NAME задание допишет само после расшарки.
-        $partial = @{
-            CABINET_EMAIL = $inputEmail.Text.Trim()
-            CABINET_PASSWORD = $inputPass.Text
-            VENUE_SLUG = ($inputSlug.Text.Trim() -replace '.*/([a-zA-Z0-9-]+)/?$', '$1')
-        } | ConvertTo-Json
-        Invoke-Background -ScriptBlock $SharePrinterJob `
-            -ArgumentList @($comboPrinter.SelectedItem, $ConfigPath, $AgentExe, $LogPath, $partial, $false) `
-            -OnDone {
-                param($result)
-                if (-not $result) {
-                    Set-Busy $false "Принтер не отвечает (таймаут). Проверьте кабель и что принтер включён."
-                    return
-                }
-                if (-not $result.ShareOk) {
-                    Set-Busy $false ""
-                    [System.Windows.Forms.MessageBox]::Show(
-                        "Не удалось автоматически расшарить принтер ($($result.ShareError)).`n`nЗапустите Menora.vbs от имени администратора, либо расшарьте принтер вручную: Панель управления -> Устройства и принтеры -> свойства принтера -> вкладка Доступ.",
-                        "Menora", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-                }
-                Start-AgentHidden
-                $form.Tag = "started"
-                $form.Close()
-            }
+        if (-not (Get-SelectedDeviceValue)) {
+            Set-Busy $false "Выберите принтер/устройство." $true
+            return
+        }
+        Set-Busy $true "Сохраняю..." $false
+        $cfg = Build-Config
+        # Без BOM — см. комментарий у $TestPrintJob выше, agent.js не
+        # прочитает config.json с BOM и решит, что программа не настроена.
+        [System.IO.File]::WriteAllText($ConfigPath, ($cfg | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
+        Set-Autostart $chkAutostart.Checked
+        Ensure-StartMenuShortcut
+        Start-AgentHidden
+        $form.Tag = "started"
+        $form.Close()
     })
 
     [void]$form.ShowDialog()
@@ -309,11 +531,19 @@ function Show-TrayIcon {
     $itemExit = $menu.Items.Add("Выход")
     $trayIcon.ContextMenuStrip = $menu
 
-    $itemSettings.Add_Click({
+    $openSettings = {
         $result = Show-SetupForm
         if ($result -eq "started") {
             $trayIcon.ShowBalloonTip(3000, "Menora", "Настройки сохранены, печать перезапущена.", [System.Windows.Forms.ToolTipIcon]::Info)
         }
+    }
+    $itemSettings.Add_Click($openSettings)
+    # Двойной клик по значку — тот же способ открыть настройки, что и через
+    # правый клик → «Настройки»: раньше окно, один раз закрытое, было
+    # невозможно найти и открыть заново без перезапуска Menora.vbs вручную.
+    $trayIcon.Add_MouseDoubleClick({
+        param($sender, $e)
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { & $openSettings }
     })
     $itemExit.Add_Click({
         Stop-Agent
@@ -321,18 +551,31 @@ function Show-TrayIcon {
         [System.Windows.Forms.Application]::Exit()
     })
 
-    $trayIcon.ShowBalloonTip(3000, "Menora", "Программа работает в фоне — ждёт новые заказы.", [System.Windows.Forms.ToolTipIcon]::Info)
+    $trayIcon.ShowBalloonTip(3000, "Menora", "Программа работает в фоне — ждёт новые заказы. Дважды кликните по значку, чтобы открыть настройки.", [System.Windows.Forms.ToolTipIcon]::Info)
     [System.Windows.Forms.Application]::Run()
 }
 
 $hasConfig = Test-Path $ConfigPath
 $forceSetup = $args -contains "--setup"
 
+# Один трей-значок на систему: если окно уже работает в фоне (запустили
+# Menora.vbs повторно, например через ярлык в Пуске — см.
+# Ensure-StartMenuShortcut), просто открываем настройки поверх него, а не
+# плодим вторую иконку в трее рядом с первой.
+$guiMutex = New-Object System.Threading.Mutex($false, "Global\MenoraPrintAgentGui")
+$isPrimaryInstance = $guiMutex.WaitOne(0)
+
+if (-not $isPrimaryInstance) {
+    if ($forceSetup -or -not $hasConfig) { [void](Show-SetupForm) }
+    exit
+}
+
 if (-not $hasConfig -or $forceSetup) {
     $result = Show-SetupForm
-    if ($result -ne "started") { exit }
+    if ($result -ne "started") { $guiMutex.ReleaseMutex(); exit }
 } else {
     Start-AgentHidden
 }
 
 Show-TrayIcon
+$guiMutex.ReleaseMutex()

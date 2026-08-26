@@ -12,7 +12,9 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
     "dotenv": "^16.4.5",
-    "node-thermal-printer": "^4.4.4"
+    "node-thermal-printer": "^4.4.4",
+    "serialport": "^13.0.0",
+    "usb": "^3.1.0"
   },
   "devDependencies": {
     "electron": "^43.4.1",

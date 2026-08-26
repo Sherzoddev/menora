@@ -12,7 +12,7 @@ const fs = require("fs");
 const path = require("path");
 const { createClient } = require("@supabase/supabase-js");
 const { printer: ThermalPrinter, types: PrinterTypes, CharacterSet } = require("node-thermal-printer");
-const { RawPrinterInterface } = require("./local-printer-interface");
+const { Transport, MultiTransportInterface, listWindowsPrinters, listUsbDevices, listSerialPorts } = require("./printer-transport");
 const { runFullSetupWizard, runPrinterOnlyWizard } = require("./setup-wizard");
 
 // Menora — единый облачный сервис на одном Supabase-проекте для всех
@@ -41,11 +41,17 @@ function getBaseDir() {
   return isSea ? path.dirname(process.execPath) : __dirname;
 }
 
-const CONFIG_PATH = path.join(getBaseDir(), "config.json");
+const BASE_DIR = getBaseDir();
+const CONFIG_PATH = path.join(BASE_DIR, "config.json");
 
 function loadConfigFile() {
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+    // Настройка сохраняется через PowerShell (gui/setup-gui.ps1) — на
+    // случай, если там (сейчас или в будущем) допишется BOM, JSON.parse
+    // сам его не пропускает и тихо падает на первом символе. Срезаем явно,
+    // чтобы конфиг не считался "пустым" из-за одного лишнего байта.
+    const raw = fs.readFileSync(CONFIG_PATH, "utf8");
+    return JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
   } catch {
     return null;
   }
@@ -73,21 +79,30 @@ async function resolveConfig() {
     "CABINET_PASSWORD",
     "VENUE_ID",
     "VENUE_SLUG",
+    "PRINTER_TRANSPORT",
     "PRINTER_NAME",
+    "PRINTER_USB_VENDOR",
+    "PRINTER_USB_PRODUCT",
+    "PRINTER_SERIAL_PATH",
     "PRINTER_WIDTH",
     "PRINTER_CHARACTER_SET",
   ]) {
     if (process.env[key]) merged[key] = process.env[key];
   }
 
+  const hasPrinterTarget =
+    (merged.PRINTER_TRANSPORT === Transport.USB && merged.PRINTER_USB_VENDOR && merged.PRINTER_USB_PRODUCT) ||
+    (merged.PRINTER_TRANSPORT === Transport.BLUETOOTH && merged.PRINTER_SERIAL_PATH) ||
+    ((!merged.PRINTER_TRANSPORT || merged.PRINTER_TRANSPORT === Transport.WINDOWS) && merged.PRINTER_NAME);
+
   if (isTestPrint) {
-    if (!merged.PRINTER_NAME || forceSetup) {
+    if (!hasPrinterTarget || forceSetup) {
       const answers = await runPrinterOnlyWizard();
       Object.assign(merged, answers);
       saveConfigFile(merged);
     }
   } else {
-    const missingRequired = !merged.CABINET_EMAIL || !merged.CABINET_PASSWORD || !merged.PRINTER_NAME || (!merged.VENUE_ID && !merged.VENUE_SLUG);
+    const missingRequired = !merged.CABINET_EMAIL || !merged.CABINET_PASSWORD || !hasPrinterTarget || (!merged.VENUE_ID && !merged.VENUE_SLUG);
     if (forceSetup) {
       // --setup только для разработки (см. README) — обычный владелец
       // заведения его никогда не наберёт, поэтому текстовый мастер здесь
@@ -127,12 +142,12 @@ function makePrinter() {
   const width = Number(CFG.PRINTER_WIDTH) || 42;
   // Дешёвые китайские "HP80"/"POS-80" принтеры не стандартизированы по
   // кодировке кириллицы — у большинства это PC866, но встречаются и WPC1251.
-  // Если чек печатает кракозябры вместо кириллицы, поменяйте это значение
-  // на одно из: PC866_CYRILLIC2, WPC1251_CYRILLIC, PC855_CYRILLIC.
+  // Если чек печатает кракозябры вместо кириллицы, поменяйте это в окне
+  // настройки (или PRINTER_CHARACTER_SET в config.json) на другой вариант.
   const characterSet = CharacterSet[CFG.PRINTER_CHARACTER_SET] || CharacterSet.PC866_CYRILLIC2;
   return new ThermalPrinter({
     type: PrinterTypes.EPSON,
-    interface: new RawPrinterInterface(CFG.PRINTER_NAME),
+    interface: new MultiTransportInterface(CFG, BASE_DIR),
     width,
     characterSet,
     removeSpecialCharacters: false,
@@ -258,7 +273,25 @@ async function handleNewOrder(supabase, venueName, order) {
   }
 }
 
+// Список устройств для окна настройки — вызывается как
+// "velora-print.exe --list-devices windows|usb|bluetooth", печатает JSON в
+// stdout и сразу выходит. Отдельно от resolveConfig(): выбор устройства
+// нужен ДО того, как конфиг вообще существует.
+async function listDevicesMode() {
+  const kind = process.argv[process.argv.indexOf("--list-devices") + 1];
+  let result;
+  if (kind === Transport.USB) result = await listUsbDevices(BASE_DIR);
+  else if (kind === Transport.BLUETOOTH) result = await listSerialPorts(BASE_DIR);
+  else result = await listWindowsPrinters();
+  process.stdout.write(JSON.stringify(result));
+}
+
 async function main() {
+  if (process.argv.includes("--list-devices")) {
+    await listDevicesMode();
+    return;
+  }
+
   CFG = await resolveConfig();
 
   if (isTestPrint) {
