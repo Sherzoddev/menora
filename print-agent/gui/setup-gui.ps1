@@ -172,16 +172,35 @@ function Set-Autostart([bool]$on) {
         $shortcut = $shell.CreateShortcut($linkPath)
         $shortcut.TargetPath = Join-Path $RootDir "Menora.vbs"
         $shortcut.WorkingDirectory = $RootDir
-        $shortcut.WindowStyle = 7
+        $shortcut.WindowStyle = 1
         $shortcut.Save()
     } elseif (Test-Path $linkPath) {
         Remove-Item $linkPath -Force -ErrorAction SilentlyContinue
     }
 }
 
-# Ярлык в меню «Пуск» — не для автозапуска, а чтобы окно настроек всегда
-# можно было найти и открыть заново (Пуск → «Menora»), даже если значок в
-# трее потерялся в скрытых иконках. Ставится один раз при первом сохранении.
+# Ярлык на Рабочем столе — самый заметный способ найти программу снова: не
+# нужно помнить, где лежит папка, или искать значок в скрытых иконках трея.
+# Двойной клик всегда открывает окно настроек (см. дефолтное поведение
+# внизу файла) — раньше было ровно наоборот, и владельцы не могли понять,
+# куда делась программа после первого запуска.
+function Ensure-DesktopShortcut {
+    $desktopDir = [Environment]::GetFolderPath("Desktop")
+    $linkPath = Join-Path $desktopDir "Menora — Настройки печати.lnk"
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($linkPath)
+        $shortcut.TargetPath = Join-Path $RootDir "Menora.vbs"
+        $shortcut.WorkingDirectory = $RootDir
+        $shortcut.WindowStyle = 1
+        $shortcut.Description = "Открыть настройки печати Menora"
+        $shortcut.Save()
+    } catch {
+        # Не критично — просто не будет ярлыка на столе, значок в трее и Пуск всё равно работают.
+    }
+}
+
+# То же самое в меню «Пуск», на случай если ярлык на столе случайно удалят.
 function Ensure-StartMenuShortcut {
     $startMenuDir = [Environment]::GetFolderPath("Programs")
     $linkPath = Join-Path $startMenuDir "Menora — печать чеков.lnk"
@@ -190,7 +209,6 @@ function Ensure-StartMenuShortcut {
         $shell = New-Object -ComObject WScript.Shell
         $shortcut = $shell.CreateShortcut($linkPath)
         $shortcut.TargetPath = Join-Path $RootDir "Menora.vbs"
-        $shortcut.Arguments = "--setup"
         $shortcut.WorkingDirectory = $RootDir
         $shortcut.WindowStyle = 1
         $shortcut.Description = "Открыть настройки печати Menora"
@@ -510,6 +528,7 @@ function Show-SetupForm {
         # прочитает config.json с BOM и решит, что программа не настроена.
         [System.IO.File]::WriteAllText($ConfigPath, ($cfg | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
         Set-Autostart $chkAutostart.Checked
+        Ensure-DesktopShortcut
         Ensure-StartMenuShortcut
         Start-AgentHidden
         $form.Tag = "started"
@@ -520,62 +539,159 @@ function Show-SetupForm {
     return $form.Tag
 }
 
-function Show-TrayIcon {
-    $trayIcon = New-Object System.Windows.Forms.NotifyIcon
-    $trayIcon.Icon = [System.Drawing.SystemIcons]::Application
-    $trayIcon.Text = "Menora — печать чеков"
-    $trayIcon.Visible = $true
+# Обычное окно программы — НЕ трей. Раньше программа после настройки
+# пряталась в значок у часов, и владельцы теряли её насовсем ("куда делась
+# программа?"). Теперь это как любая нормальная Windows-программа: видна в
+# панели задач, показывает вживую что происходит (вход, печать, ошибки),
+# закрытие крестиком — это настоящий выход, а не уход в фон.
+function Show-StatusWindow {
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Menora — печать чеков"
+    $form.Size = New-Object System.Drawing.Size(460, 560)
+    $form.StartPosition = "CenterScreen"
+    $form.MinimumSize = New-Object System.Drawing.Size(460, 420)
+    $form.BackColor = $ColorBg
+    $form.Font = New-Object System.Drawing.Font($FontFamily, 9.5)
 
-    $menu = New-Object System.Windows.Forms.ContextMenuStrip
-    $itemSettings = $menu.Items.Add("Настройки")
-    $itemExit = $menu.Items.Add("Выход")
-    $trayIcon.ContextMenuStrip = $menu
+    $header = New-Object System.Windows.Forms.Panel
+    $header.Dock = "Top"
+    $header.Height = 78
+    $header.BackColor = $ColorAccent
+    $form.Controls.Add($header)
 
-    $openSettings = {
-        $result = Show-SetupForm
-        if ($result -eq "started") {
-            $trayIcon.ShowBalloonTip(3000, "Menora", "Настройки сохранены, печать перезапущена.", [System.Windows.Forms.ToolTipIcon]::Info)
-        }
+    $title = New-Label "Menora" 20 12 300 ([System.Drawing.Color]::White) 15 ([System.Drawing.FontStyle]::Bold)
+    $header.Controls.Add($title)
+    $statusDot = New-Label "●" 20 38 20 ([System.Drawing.Color]::White) 11
+    $header.Controls.Add($statusDot)
+    $statusText = New-Label "Запускаюсь..." 40 39 380 ([System.Drawing.Color]::White) 9.5
+    $header.Controls.Add($statusText)
+
+    $logBox = New-Object System.Windows.Forms.TextBox
+    $logBox.Multiline = $true
+    $logBox.ReadOnly = $true
+    $logBox.ScrollBars = "Vertical"
+    $logBox.BorderStyle = "None"
+    $logBox.BackColor = $ColorCard
+    $logBox.ForeColor = $ColorText
+    $logBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $logBox.Location = New-Object System.Drawing.Point(20, 96)
+    $logBox.Anchor = "Top,Bottom,Left,Right"
+    $form.Controls.Add($logBox)
+
+    $btnSettings = New-FlatButton "Настройки" 20 0 130 38 $false
+    $btnExit = New-FlatButton "Выход" 160 0 110 38 $false
+    $btnSettings.Anchor = "Bottom,Left"
+    $btnExit.Anchor = "Bottom,Left"
+    $form.Controls.Add($btnSettings)
+    $form.Controls.Add($btnExit)
+
+    function Resize-Controls {
+        $logBox.Size = New-Object System.Drawing.Size(($form.ClientSize.Width - 40), ($form.ClientSize.Height - 96 - 56))
+        $btnY = $form.ClientSize.Height - 48
+        $btnSettings.Location = New-Object System.Drawing.Point(20, $btnY)
+        $btnExit.Location = New-Object System.Drawing.Point(160, $btnY)
     }
-    $itemSettings.Add_Click($openSettings)
-    # Двойной клик по значку — тот же способ открыть настройки, что и через
-    # правый клик → «Настройки»: раньше окно, один раз закрытое, было
-    # невозможно найти и открыть заново без перезапуска Menora.vbs вручную.
-    $trayIcon.Add_MouseDoubleClick({
-        param($sender, $e)
-        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { & $openSettings }
+    $form.Add_Shown({ Resize-Controls })
+    $form.Add_Resize({ Resize-Controls })
+
+    # Читаем лог целиком на каждом тике и подменяем текст, если он изменился.
+    # Прошлая версия дочитывала файл с сохранённой позиции — но переменные,
+    # присвоенные внутри обработчика события WinForms, не переживают сам
+    # обработчик (у него своя область видимости), поэтому позиция всегда
+    # сбрасывалась и строки дублировались. Файл маленький (несколько КБ),
+    # так что просто перечитать его целиком и проще, и надёжнее.
+    #
+    # Кодировку указываем явно: agent.js пишет UTF-8, а .NET/PowerShell по
+    # умолчанию в этой локали прочитает его как ANSI и вместо русского
+    # текста получится "Р’С…РѕРґ".
+    $script:lastLogText = $null
+    $timer = New-Object System.Windows.Forms.Timer
+    $timer.Interval = 800
+    $timer.Add_Tick({
+        try {
+            if (-not (Test-Path $script:LogPath)) { return }
+            $stream = [System.IO.File]::Open($script:LogPath, "Open", "Read", "ReadWrite")
+            $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
+            $text = $reader.ReadToEnd()
+            $reader.Close(); $stream.Close()
+
+            if ($text -eq $script:lastLogText) { return }
+            $script:lastLogText = $text
+
+            $logBox.Text = $text
+            $logBox.SelectionStart = $logBox.TextLength
+            $logBox.ScrollToCaret()
+
+            $lastLine = ($text -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 1)
+            if ($lastLine -match "Не удалось|Ошибка|ошибка") {
+                $statusDot.ForeColor = [System.Drawing.Color]::FromArgb(0xFC, 0xA5, 0xA5)
+                $statusText.Text = "Ошибка — смотрите лог ниже"
+            } elseif ($lastLine -match "Чек напечатан") {
+                $statusDot.ForeColor = [System.Drawing.Color]::FromArgb(0x86, 0xEF, 0xAC)
+                $statusText.Text = "Чек напечатан"
+            } elseif ($lastLine -match "Готово|Вход в кабинет") {
+                $statusDot.ForeColor = [System.Drawing.Color]::FromArgb(0x86, 0xEF, 0xAC)
+                $statusText.Text = "Работает — ждёт заказы"
+            }
+        } catch {
+            # Файл могла на миг заблокировать печать — попробуем на следующем тике.
+        }
     })
-    $itemExit.Add_Click({
+
+    $btnSettings.Add_Click({
         Stop-Agent
-        $trayIcon.Visible = $false
+        $timer.Stop()
+        $result = Show-SetupForm
+        $script:lastLogText = $null
+        $logBox.Clear()
+        if ($result -ne "started") { Start-AgentHidden }
+        $timer.Start()
+    })
+    $btnExit.Add_Click({ $form.Close() })
+    $form.Add_FormClosing({
+        $timer.Stop()
+        Stop-Agent
         [System.Windows.Forms.Application]::Exit()
     })
 
-    $trayIcon.ShowBalloonTip(3000, "Menora", "Программа работает в фоне — ждёт новые заказы. Дважды кликните по значку, чтобы открыть настройки.", [System.Windows.Forms.ToolTipIcon]::Info)
-    [System.Windows.Forms.Application]::Run()
+    $timer.Start()
+    [System.Windows.Forms.Application]::Run($form)
 }
 
 $hasConfig = Test-Path $ConfigPath
-$forceSetup = $args -contains "--setup"
 
-# Один трей-значок на систему: если окно уже работает в фоне (запустили
-# Menora.vbs повторно, например через ярлык в Пуске — см.
-# Ensure-StartMenuShortcut), просто открываем настройки поверх него, а не
-# плодим вторую иконку в трее рядом с первой.
+# Один экземпляр на систему: повторный запуск (ярлык на столе, в Пуске,
+# автозагрузка) не плодит вторую копию программы рядом с первой.
 $guiMutex = New-Object System.Threading.Mutex($false, "Global\MenoraPrintAgentGui")
-$isPrimaryInstance = $guiMutex.WaitOne(0)
+
+# Если прошлый экземпляр убили жёстко (диспетчер задач, аварийное
+# завершение, переустановка поверх работающей программы), мьютекс остаётся
+# "брошенным" и WaitOne бросает AbandonedMutexException. Раньше это
+# исключение никто не ловил — скрипт молча падал ещё до создания окна, и
+# программа просто «переставала открываться» до перезагрузки компьютера.
+# Брошенный мьютекс означает, что владельца больше нет, а значит мы и есть
+# новый единственный экземпляр — продолжаем работу.
+try {
+    $isPrimaryInstance = $guiMutex.WaitOne(0)
+} catch [System.Threading.AbandonedMutexException] {
+    $isPrimaryInstance = $true
+}
 
 if (-not $isPrimaryInstance) {
-    if ($forceSetup -or -not $hasConfig) { [void](Show-SetupForm) }
     exit
 }
 
-if (-not $hasConfig -or $forceSetup) {
-    $result = Show-SetupForm
-    if ($result -ne "started") { $guiMutex.ReleaseMutex(); exit }
-} else {
-    Start-AgentHidden
-}
+try {
+    if (-not $hasConfig) {
+        $result = Show-SetupForm
+        if ($result -ne "started") { exit }
+    } else {
+        Start-AgentHidden
+    }
 
-Show-TrayIcon
-$guiMutex.ReleaseMutex()
+    Show-StatusWindow
+} finally {
+    # Освобождаем всегда — иначе следующий запуск снова упрётся в мьютекс.
+    try { $guiMutex.ReleaseMutex() } catch { }
+    $guiMutex.Dispose()
+}

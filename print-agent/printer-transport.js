@@ -138,12 +138,18 @@ function getRawPrintScript(baseDir) {
   return file;
 }
 
+// Принтер, который выключен/не в сети, иногда заставляет WritePrinter
+// (внутри raw-print.ps1) зависать на неопределённое время — спулер Windows
+// ждёт устройство сам, без своего таймаута. Без ограничения здесь запрос
+// висел бы вечно вместо понятной ошибки "принтер не отвечает".
+const WINDOWS_PRINT_TIMEOUT_MS = 10000;
+
 async function listWindowsPrinters() {
-  const { stdout } = await execFileAsync("powershell.exe", [
-    "-NoProfile",
-    "-Command",
-    "Get-Printer | Select-Object -ExpandProperty Name",
-  ]);
+  const { stdout } = await execFileAsync(
+    "powershell.exe",
+    ["-NoProfile", "-Command", "Get-Printer | Select-Object -ExpandProperty Name"],
+    { timeout: WINDOWS_PRINT_TIMEOUT_MS },
+  );
   return stdout
     .split(/\r?\n/)
     .map((s) => s.trim())
@@ -155,17 +161,11 @@ async function printWindows(baseDir, printerName, bytes) {
   const tmpFile = path.join(os.tmpdir(), `menora-print-${Date.now()}-${Math.random().toString(36).slice(2)}.bin`);
   fs.writeFileSync(tmpFile, bytes);
   try {
-    await execFileAsync("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File",
-      script,
-      "-PrinterName",
-      printerName,
-      "-FilePath",
-      tmpFile,
-    ]);
+    await execFileAsync(
+      "powershell.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-PrinterName", printerName, "-FilePath", tmpFile],
+      { timeout: WINDOWS_PRINT_TIMEOUT_MS },
+    );
   } finally {
     fs.unlink(tmpFile, () => {});
   }
