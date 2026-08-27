@@ -259,6 +259,17 @@ async function printSerial(portPath, bytes, baseDir) {
 
 // ---------- Единая точка входа ----------
 
+// Дешёвые китайские принтеры (POS-58/POS-80 и клоны) по умолчанию стоят в
+// режиме иероглифов: каждые два байта они склеивают в один китайский символ,
+// поэтому кириллица печатается иероглифами, а цифры и латиница — нормально.
+// ESC @ сбрасывает принтер, FS . выключает этот режим; дальше идёт команда
+// выбора кодовой страницы, которую node-thermal-printer кладёт в начало
+// своего буфера (см. clear/setCharacterSet в lib/core.js).
+const PROLOGUE = Buffer.from([
+  0x1b, 0x40, // ESC @  — инициализация
+  0x1c, 0x2e, // FS  .  — выключить режим иероглифов (Kanji/GB)
+]);
+
 /** node-thermal-printer ждёт объект-интерфейс с execute(buffer) — этот
  * адаптер маршрутизирует байты в выбранный владельцем транспорт. */
 class MultiTransportInterface {
@@ -273,13 +284,14 @@ class MultiTransportInterface {
 
   async execute(buffer) {
     const { cfg } = this;
+    const payload = Buffer.concat([PROLOGUE, Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer)]);
     const send = async () => {
       if (cfg.PRINTER_TRANSPORT === Transport.USB) {
-        await printUsb(Number(cfg.PRINTER_USB_VENDOR), Number(cfg.PRINTER_USB_PRODUCT), buffer, this.baseDir);
+        await printUsb(Number(cfg.PRINTER_USB_VENDOR), Number(cfg.PRINTER_USB_PRODUCT), payload, this.baseDir);
       } else if (cfg.PRINTER_TRANSPORT === Transport.BLUETOOTH) {
-        await printSerial(cfg.PRINTER_SERIAL_PATH, buffer, this.baseDir);
+        await printSerial(cfg.PRINTER_SERIAL_PATH, payload, this.baseDir);
       } else {
-        await printWindows(this.baseDir, cfg.PRINTER_NAME, buffer);
+        await printWindows(this.baseDir, cfg.PRINTER_NAME, payload);
       }
     };
     // Спулер печати/ОС иногда на мгновение отклоняет запуск (например,

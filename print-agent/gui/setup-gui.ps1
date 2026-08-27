@@ -5,13 +5,50 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# setup-gui.ps1 живёт в подпапке gui\, а menora-print.exe и config.json —
-# на уровень выше, рядом с Menora.vbs.
+# setup-gui.ps1 живёт в подпапке gui\, а menora-print.exe — на уровень
+# выше, рядом с Menora.vbs.
 $GuiDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Split-Path -Parent $GuiDir
-$ConfigPath = Join-Path $RootDir "config.json"
 $AgentExe = Join-Path $RootDir "menora-print.exe"
 $LogPath = Join-Path $RootDir "agent.log"
+
+# Конфиг НЕЛЬЗЯ хранить рядом с программой: папку с программой кладут на
+# рабочий стол, а он у большинства синхронизируется OneDrive — и логин с
+# паролем от кабинета разъезжались на все компьютеры владельца. LocalAppData
+# не синхронизируется никогда и у каждой учётной записи Windows свой.
+$script:ConfigDir = Join-Path $env:LOCALAPPDATA "Menora"
+$script:ConfigPath = Join-Path $script:ConfigDir "config.json"
+$ConfigDir = $script:ConfigDir
+$ConfigPath = $script:ConfigPath
+$LegacyConfigPath = Join-Path $RootDir "config.json"
+
+# Пароль на диске держим зашифрованным через DPAPI: ключ привязан к текущей
+# учётной записи Windows и к этому компьютеру, поэтому скопированный файл на
+# другой машине не расшифруется. Расшифровываем только в памяти, перед самым
+# запуском агента, и передаём ему через переменную окружения (agent.js их
+# читает — см. resolveConfig), чтобы пароль вообще не попадал в файл.
+function Protect-Secret([string]$plain) {
+    if (-not $plain) { return "" }
+    $secure = ConvertTo-SecureString $plain -AsPlainText -Force
+    return ConvertFrom-SecureString $secure
+}
+
+function Unprotect-Secret([string]$encrypted) {
+    if (-not $encrypted) { return "" }
+    try {
+        $secure = ConvertTo-SecureString $encrypted
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+        try {
+            return [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+        } finally {
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        }
+    } catch {
+        # Файл принесли с другой машины/учётки — расшифровать нельзя,
+        # владелец введёт пароль заново.
+        return ""
+    }
+}
 
 # ---------- Оформление ----------
 $ColorBg = [System.Drawing.Color]::FromArgb(0xFA, 0xF8, 0xF5)
@@ -150,15 +187,62 @@ function Stop-Agent {
 function Start-AgentHidden {
     Stop-Agent
     Start-Sleep -Milliseconds 300
+    # Пароль передаём процессу агента через окружение, а не через файл —
+    # см. Protect-Secret выше. Дочерний процесс наследует переменные этого.
+    $cfg = Load-ExistingConfig
+    if ($cfg -and $cfg.CABINET_PASSWORD_ENC) {
+        $env:CABINET_PASSWORD = Unprotect-Secret $cfg.CABINET_PASSWORD_ENC
+    }
+    $env:MENORA_CONFIG_PATH = $script:ConfigPath
     Start-Process -FilePath $AgentExe -WindowStyle Hidden `
         -RedirectStandardOutput $LogPath -RedirectStandardError "$LogPath.err" | Out-Null
+    # В самом окне пароль дальше не нужен — не оставляем его в окружении.
+    $env:CABINET_PASSWORD = $null
 }
 
 function Load-ExistingConfig {
-    if (Test-Path $ConfigPath) {
-        try { return Get-Content $ConfigPath -Raw | ConvertFrom-Json } catch { return $null }
+    if (Test-Path $script:ConfigPath) {
+        try {
+            $raw = [System.IO.File]::ReadAllText($script:ConfigPath, [System.Text.Encoding]::UTF8)
+            return $raw | ConvertFrom-Json
+        } catch { return $null }
     }
     return $null
+}
+
+# Переезд со старого места (config.json рядом с программой, в синхронизируемой
+# папке) на LocalAppData. Пароль при этом шифруется, а старый файл с открытым
+# паролем удаляется — иначе он так и остался бы лежать в OneDrive.
+function Migrate-LegacyConfig {
+    if (-not (Test-Path $LegacyConfigPath)) { return }
+    if (-not (Test-Path $script:ConfigDir)) {
+        New-Item -ItemType Directory -Path $script:ConfigDir -Force | Out-Null
+    }
+    if (-not (Test-Path $script:ConfigPath)) {
+        try {
+            $raw = [System.IO.File]::ReadAllText($LegacyConfigPath, [System.Text.Encoding]::UTF8)
+            $old = $raw | ConvertFrom-Json
+            $cfg = @{}
+            $old.PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value }
+            if ($cfg.CABINET_PASSWORD) {
+                $cfg["CABINET_PASSWORD_ENC"] = Protect-Secret ([string]$cfg.CABINET_PASSWORD)
+                $cfg.Remove("CABINET_PASSWORD")
+            }
+            Save-Config $cfg
+        } catch {
+            # Старый файл битый — просто начнём с чистой настройки.
+        }
+    }
+    Remove-Item $LegacyConfigPath -Force -ErrorAction SilentlyContinue
+}
+
+function Save-Config([hashtable]$cfg) {
+    if (-not (Test-Path $script:ConfigDir)) {
+        New-Item -ItemType Directory -Path $script:ConfigDir -Force | Out-Null
+    }
+    # Без BOM — JSON.parse в Node на нём спотыкается (agent.js это уже
+    # переживёт, но пусть файл будет корректным с самого начала).
+    [System.IO.File]::WriteAllText($script:ConfigPath, ($cfg | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
 }
 
 # «Запускать при включении» — ярлык в папке автозагрузки Windows. То же
@@ -232,21 +316,37 @@ function Invoke-Background {
     $job = Start-Job -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList
     $timer = New-Object System.Windows.Forms.Timer
     $timer.Interval = 300
-    $start = Get-Date
+    # Всё состояние вешаем на сам таймер и достаём через $this: локальные
+    # переменные этой функции внутри обработчика события не видны, из-за чего
+    # $job там оказывался $null — и Remove-Job валился с "Аргумент пустой или
+    # имеет значение NULL", показывая владельцу окно ошибки .NET вместо
+    # результата печати. $this в обработчике WinForms — это сам таймер.
+    $timer.Tag = @{
+        Job        = $job
+        Start      = Get-Date
+        OnDone     = $OnDone
+        TimeoutSec = $TimeoutSec
+    }
     $timer.Add_Tick({
-        if ($job.State -ne 'Running') {
-            $timer.Stop()
-            $timer.Dispose()
-            $result = $null
-            try { $result = Receive-Job -Job $job -ErrorAction Stop } catch {}
-            Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-            & $OnDone $result
-        } elseif (((Get-Date) - $start).TotalSeconds -gt $TimeoutSec) {
-            $timer.Stop()
-            $timer.Dispose()
-            Stop-Job -Job $job -ErrorAction SilentlyContinue
-            Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-            & $OnDone $null
+        $state = $this.Tag
+        if (-not $state -or -not $state.Job) { $this.Stop(); return }
+
+        $done = $false
+        $result = $null
+        if ($state.Job.State -ne 'Running') {
+            $done = $true
+            try { $result = Receive-Job -Job $state.Job -ErrorAction Stop } catch { $result = $null }
+        } elseif (((Get-Date) - $state.Start).TotalSeconds -gt $state.TimeoutSec) {
+            $done = $true
+            Stop-Job -Job $state.Job -ErrorAction SilentlyContinue
+        }
+
+        if ($done) {
+            $this.Stop()
+            Remove-Job -Job $state.Job -Force -ErrorAction SilentlyContinue
+            $this.Tag = $null
+            & $state.OnDone $result
+            $this.Dispose()
         }
     })
     $timer.Start()
@@ -307,7 +407,7 @@ function Show-SetupForm {
     $form.Controls.Add((New-Label "Пароль" 20 $y))
     $y += 20
     $inputPass = New-TextBox 20 $y 400 $true
-    if ($existing.CABINET_PASSWORD) { $inputPass.Text = $existing.CABINET_PASSWORD }
+    if ($existing.CABINET_PASSWORD_ENC) { $inputPass.Text = Unprotect-Secret $existing.CABINET_PASSWORD_ENC }
     $form.Controls.Add($inputPass)
     $y += 34
 
@@ -466,7 +566,10 @@ function Show-SetupForm {
         $cfg = @{}
         if ($existing) { $existing.PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value } }
         $cfg["CABINET_EMAIL"] = $inputEmail.Text.Trim()
-        $cfg["CABINET_PASSWORD"] = $inputPass.Text
+        # В файл кладём только зашифрованный пароль (DPAPI, привязан к этой
+        # учётке Windows) — открытого в конфиге не остаётся вообще.
+        $cfg["CABINET_PASSWORD_ENC"] = Protect-Secret $inputPass.Text
+        $cfg.Remove("CABINET_PASSWORD")
         $cfg["VENUE_SLUG"] = ($inputSlug.Text.Trim() -replace '.*/([a-zA-Z0-9-]+)/?$', '$1')
         $cfg["PRINTER_TRANSPORT"] = $currentTransport
         $cfg["PRINTER_CHARACTER_SET"] = $CHARSETS[$comboCharset.SelectedIndex].Key
@@ -499,7 +602,7 @@ function Show-SetupForm {
         Set-Busy $true "Печатаю..." $false
         $cfg = Build-Config
         $json = ($cfg | ConvertTo-Json)
-        Invoke-Background -ScriptBlock $TestPrintJob -ArgumentList @($AgentExe, $ConfigPath, $LogPath, $json) -OnDone {
+        Invoke-Background -ScriptBlock $TestPrintJob -ArgumentList @($AgentExe, $script:ConfigPath, $LogPath, $json) -OnDone {
             param($result)
             if (-not $result) {
                 Set-Busy $false "Принтер не отвечает (таймаут). Проверьте подключение." $true
@@ -524,9 +627,7 @@ function Show-SetupForm {
         }
         Set-Busy $true "Сохраняю..." $false
         $cfg = Build-Config
-        # Без BOM — см. комментарий у $TestPrintJob выше, agent.js не
-        # прочитает config.json с BOM и решит, что программа не настроена.
-        [System.IO.File]::WriteAllText($ConfigPath, ($cfg | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
+        Save-Config $cfg
         Set-Autostart $chkAutostart.Checked
         Ensure-DesktopShortcut
         Ensure-StartMenuShortcut
@@ -658,7 +759,8 @@ function Show-StatusWindow {
     [System.Windows.Forms.Application]::Run($form)
 }
 
-$hasConfig = Test-Path $ConfigPath
+Migrate-LegacyConfig
+$hasConfig = Test-Path $script:ConfigPath
 
 # Один экземпляр на систему: повторный запуск (ярлык на столе, в Пуске,
 # автозагрузка) не плодит вторую копию программы рядом с первой.

@@ -42,7 +42,25 @@ function getBaseDir() {
 }
 
 const BASE_DIR = getBaseDir();
-const CONFIG_PATH = path.join(BASE_DIR, "config.json");
+
+// Конфиг лежит в LocalAppData, а НЕ рядом с программой: папку с программой
+// обычно кладут на рабочий стол, а он у большинства синхронизируется
+// OneDrive — и логин с паролем от кабинета уезжали на все компьютеры
+// владельца. LocalAppData не синхронизируется и у каждой учётки Windows
+// свой. MENORA_CONFIG_PATH передаёт окно настройки (gui/setup-gui.ps1);
+// путь рядом с exe остаётся только как запасной вариант для старых
+// установок и для запуска без окна.
+function resolveConfigPath() {
+  if (process.env.MENORA_CONFIG_PATH) return process.env.MENORA_CONFIG_PATH;
+  const localAppData = process.env.LOCALAPPDATA;
+  if (localAppData) {
+    const managed = path.join(localAppData, "Menora", "config.json");
+    if (fs.existsSync(managed)) return managed;
+  }
+  return path.join(BASE_DIR, "config.json");
+}
+
+const CONFIG_PATH = resolveConfigPath();
 
 function loadConfigFile() {
   try {
