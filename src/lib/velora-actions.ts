@@ -94,6 +94,14 @@ export async function pushOrderToVelora(params: {
     });
     if (!tabRes.ok) throw new Error(`tabs: ${tabRes.status} ${await tabRes.text()}`);
 
+    // Позиции сразу помечаем как уже ушедшие и напечатанные на кухне: талон
+    // для повара печатает принт-агент Меноры на кухонном принтере в момент
+    // заказа (см. print-agent/agent.js). Без этих отметок Velora считает
+    // позиции неотправленными и печатает кухонный талон ещё раз — на принтере
+    // кассы, когда кассир закрывает счёт (см. TabsScreen.tsx: фильтр
+    // !kitchen_printed_at при закрытии и авто-печать sent_to_kitchen &&
+    // !kitchen_printed_at). Заказов, заведённых прямо в Velora, это не
+    // касается — там отметок нет и кухня печатается как раньше.
     const itemRows = items.map((i) => ({
       id: crypto.randomUUID(),
       venue_id: veloraVenueId,
@@ -105,6 +113,9 @@ export async function pushOrderToVelora(params: {
       qty: i.qty,
       comment: null,
       added_at: now,
+      sent_to_kitchen: true,
+      kitchen_sent_at: now,
+      kitchen_printed_at: now,
     }));
 
     const itemsRes = await fetch(`${VELORA_URL}/rest/v1/tab_items?on_conflict=id`, {

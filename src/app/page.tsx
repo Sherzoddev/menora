@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Fraunces, Manrope } from "next/font/google";
+import { Playfair_Display, Manrope } from "next/font/google";
 import {
   QrCode,
   Tv2,
@@ -25,10 +25,12 @@ import {
 } from "lucide-react";
 import { LANDING, demoSlug, type Lang } from "@/lib/landing-content";
 
-const display = Fraunces({
+// Заголовки на сайте русские и узбекские, поэтому акцидентный шрифт обязан
+// покрывать кириллицу — Fraunces её не содержит вообще (сборка Next на этом
+// падает), и текст молча уезжал на системный засечный шрифт.
+const display = Playfair_Display({
   subsets: ["latin", "cyrillic"],
   weight: ["500", "600", "700"],
-  style: ["normal", "italic"],
   variable: "--font-display",
 });
 
