@@ -152,10 +152,6 @@ async function resolveConfig() {
 
 let CFG = {};
 
-function formatMoney(value) {
-  return `${new Intl.NumberFormat("ru-RU").format(Math.round(value))} сум`;
-}
-
 function makePrinter() {
   const width = Number(CFG.PRINTER_WIDTH) || 42;
   // Дешёвые китайские "HP80"/"POS-80" принтеры не стандартизированы по
@@ -198,22 +194,17 @@ async function buildTicket(printer, { order, items, venueName }) {
 
   printer.alignLeft();
   printer.println(`Заказ #${order.order_number}`);
+  printer.newLine();
+  // Это талон для кухни, а не счёт гостю: денег здесь нет намеренно —
+  // повару нужно только что готовить и сколько. Суммы, скидки и промокод
+  // видит кассир в Velora, когда закрывает счёт.
   for (const item of items) {
-    printer.leftRight(`${item.quantity}x ${item.dish_name}`, formatMoney(item.price * item.quantity));
+    printer.setTextDoubleHeight();
+    printer.bold(true);
+    printer.println(`${item.quantity} x ${item.dish_name}`);
+    printer.bold(false);
+    printer.setTextNormal();
   }
-  printer.drawLine();
-
-  if (order.promo_code) {
-    printer.leftRight(`Промокод ${order.promo_code}`, "");
-  }
-  if (order.discount > 0) {
-    printer.leftRight("Скидка", `-${formatMoney(order.discount)}`);
-  }
-  printer.setTextDoubleHeight();
-  printer.bold(true);
-  printer.leftRight("ИТОГО", formatMoney(order.total));
-  printer.bold(false);
-  printer.setTextNormal();
   printer.drawLine();
 
   printer.println(`Клиент: ${order.customer_name}`);
