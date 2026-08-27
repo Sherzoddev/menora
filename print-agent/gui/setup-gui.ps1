@@ -210,25 +210,36 @@ function Load-ExistingConfig {
     return $null
 }
 
-# Переезд со старого места (config.json рядом с программой, в синхронизируемой
-# папке) на LocalAppData. Пароль при этом шифруется, а старый файл с открытым
-# паролем удаляется — иначе он так и остался бы лежать в OneDrive.
+# Переезд со старого места (config.json рядом с программой) на LocalAppData.
+#
+# Логин и пароль при переезде НЕ переносим намеренно. Старый файл лежал в
+# папке с программой, а её кладут на рабочий стол — то есть в OneDrive, и он
+# мог приехать на этот компьютер откуда угодно вместе с чужими данными от
+# кабинета. Единственный безопасный вывод из такого файла: настройки принтера
+# перенести можно, доступ к кабинету — нельзя, владелец вводит его заново на
+# каждой машине. Сам старый файл удаляем — иначе открытый пароль так и
+# остался бы лежать в синхронизируемой папке.
+$SAFE_LEGACY_KEYS = @(
+    "PRINTER_TRANSPORT",
+    "PRINTER_NAME",
+    "PRINTER_USB_VENDOR",
+    "PRINTER_USB_PRODUCT",
+    "PRINTER_SERIAL_PATH",
+    "PRINTER_WIDTH",
+    "PRINTER_CHARACTER_SET"
+)
+
 function Migrate-LegacyConfig {
     if (-not (Test-Path $LegacyConfigPath)) { return }
-    if (-not (Test-Path $script:ConfigDir)) {
-        New-Item -ItemType Directory -Path $script:ConfigDir -Force | Out-Null
-    }
     if (-not (Test-Path $script:ConfigPath)) {
         try {
             $raw = [System.IO.File]::ReadAllText($LegacyConfigPath, [System.Text.Encoding]::UTF8)
             $old = $raw | ConvertFrom-Json
             $cfg = @{}
-            $old.PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value }
-            if ($cfg.CABINET_PASSWORD) {
-                $cfg["CABINET_PASSWORD_ENC"] = Protect-Secret ([string]$cfg.CABINET_PASSWORD)
-                $cfg.Remove("CABINET_PASSWORD")
+            foreach ($key in $SAFE_LEGACY_KEYS) {
+                if ($old.PSObject.Properties.Name -contains $key -and $old.$key) { $cfg[$key] = $old.$key }
             }
-            Save-Config $cfg
+            if ($cfg.Count -gt 0) { Save-Config $cfg }
         } catch {
             # Старый файл битый — просто начнём с чистой настройки.
         }
