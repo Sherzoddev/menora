@@ -3,16 +3,20 @@
 import { useActionState, useState } from "react";
 import { createOrder } from "@/lib/orders-actions";
 import { useCart } from "@/lib/cart-context";
+import type { MenuTheme } from "@/lib/menu-theme";
+import { LIGHT_THEME } from "@/lib/menu-theme";
 
 export default function CheckoutForm({
   venueId,
   accent,
   tableNumber,
+  theme = LIGHT_THEME,
   onSuccess,
 }: {
   venueId: string;
   accent: string;
   tableNumber?: string;
+  theme?: MenuTheme;
   onSuccess: (orderId: string) => void;
 }) {
   const cart = useCart();
@@ -71,10 +75,10 @@ export default function CheckoutForm({
 
   return (
     <form action={formAction} className="space-y-3">
-      <Field label="Ваше имя">
+      <Field label="Ваше имя" theme={theme}>
         <input name="customer_name" required className="checkout-input" placeholder="Иван" />
       </Field>
-      <Field label="Телефон">
+      <Field label="Телефон" theme={theme}>
         <input name="phone" required className="checkout-input" placeholder="+998 90 123 45 67" />
       </Field>
 
@@ -88,7 +92,7 @@ export default function CheckoutForm({
         </>
       ) : (
         <>
-          <Field label="Способ получения">
+          <Field label="Способ получения" theme={theme}>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -97,7 +101,7 @@ export default function CheckoutForm({
                 style={
                   fulfillment === "delivery"
                     ? { borderColor: accent, color: accent, background: `${accent}14` }
-                    : { borderColor: "#e7ddcd", color: "#8a7a63" }
+                    : { borderColor: theme.border, color: theme.muted }
                 }
               >
                 Доставка
@@ -109,7 +113,7 @@ export default function CheckoutForm({
                 style={
                   fulfillment === "pickup"
                     ? { borderColor: accent, color: accent, background: `${accent}14` }
-                    : { borderColor: "#e7ddcd", color: "#8a7a63" }
+                    : { borderColor: theme.border, color: theme.muted }
                 }
               >
                 Самовывоз
@@ -119,7 +123,7 @@ export default function CheckoutForm({
           </Field>
 
           {fulfillment === "delivery" && (
-            <Field label="Адрес доставки">
+            <Field label="Адрес доставки" theme={theme}>
               <div className="flex gap-2">
                 <input
                   name="address"
@@ -146,20 +150,20 @@ export default function CheckoutForm({
         </>
       )}
 
-      <Field label="Промокод (необязательно)">
+      <Field label="Промокод (необязательно)" theme={theme}>
         <input name="promo_code" className="checkout-input" placeholder="Например, WELCOME10" />
       </Field>
 
-      <label className="flex items-center gap-2 text-xs text-[#5a4d3c]">
+      <label className="flex items-center gap-2 text-xs" style={{ color: theme.muted }}>
         <input type="checkbox" name="use_points" />
         Списать бонусные баллы (если есть на этот номер телефона)
       </label>
 
-      <Field label="Комментарий (необязательно)">
+      <Field label="Комментарий (необязательно)" theme={theme}>
         <textarea name="comment" rows={2} className="checkout-input" />
       </Field>
 
-      {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+      {state.error && <p className="text-sm text-red-500">{state.error}</p>}
 
       <button
         type="submit"
@@ -174,12 +178,15 @@ export default function CheckoutForm({
         .checkout-input {
           width: 100%;
           border-radius: 0.75rem;
-          border: 1px solid #e7ddcd;
-          background: #fffdf9;
+          border: 1px solid ${theme.border};
+          background: ${theme.inputBg};
           padding: 0.6rem 0.9rem;
           font-size: 0.875rem;
-          color: #3a2f22;
+          color: ${theme.text};
           outline: none;
+        }
+        .checkout-input::placeholder {
+          color: ${theme.mutedLight};
         }
         .checkout-input:focus {
           border-color: ${accent};
@@ -189,10 +196,10 @@ export default function CheckoutForm({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, theme, children }: { label: string; theme: MenuTheme; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-[#8a7a63]">{label}</label>
+      <label className="mb-1 block text-xs font-medium" style={{ color: theme.muted }}>{label}</label>
       {children}
     </div>
   );

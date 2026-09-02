@@ -10,6 +10,11 @@ declare global {
         initData: string;
         ready: () => void;
         expand: () => void;
+        // Bot API 7.7+/8.0+ — older Telegram clients don't have these, so
+        // always feature-detect with isVersionAtLeast() before calling.
+        isVersionAtLeast?: (version: string) => boolean;
+        disableVerticalSwipes?: () => void;
+        requestFullscreen?: () => void;
       };
     };
   }

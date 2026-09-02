@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { MapPin, Phone, Clock, Camera, Send, Search, ChevronLeft, ShoppingBag, Plus, Minus, Bell } from "lucide-react";
+import { MapPin, Phone, Clock, Camera, Send, Search, ChevronLeft, ShoppingBag, Plus, Minus, Bell, Moon, Sun } from "lucide-react";
 import type { Tables } from "@/lib/supabase/types";
 import { formatPrice, isOpenNow } from "@/lib/menu-utils";
 import { CartProvider, useCart } from "@/lib/cart-context";
 import { callWaiter } from "@/lib/waiter-actions";
+import { getMenuTheme, loadThemePref, saveThemePref, type MenuTheme } from "@/lib/menu-theme";
 import CartSheet from "./cart-sheet";
 
 // Matches the explicit column list in page.tsx's getVenueData — deliberately
@@ -81,11 +82,26 @@ function MenuContent({
 }) {
   const cart = useCart();
   const [lang, setLang] = useState<"ru" | "uz">("ru");
+  const [dark, setDark] = useState(false);
   const [activeCategory, setActiveCategory] = useState<Category | null>(null);
   const [search, setSearch] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
   const [waiterState, setWaiterState] = useState<"idle" | "calling" | "called" | "cooldown">("idle");
   const t = DICT[lang];
+  const theme = getMenuTheme(dark);
+
+  useEffect(() => {
+    setDark(loadThemePref(venue.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function toggleTheme() {
+    setDark((prev) => {
+      const next = !prev;
+      saveThemePref(venue.id, next);
+      return next;
+    });
+  }
 
   async function handleCallWaiter() {
     if (waiterState !== "idle") return;
@@ -120,8 +136,16 @@ function MenuContent({
 
     // No-op outside Telegram — window.Telegram is only defined when this
     // page is opened as the venue's bot's Mini App (see [slug]/page.tsx).
-    window.Telegram?.WebApp?.ready();
-    window.Telegram?.WebApp?.expand();
+    const tg = window.Telegram?.WebApp;
+    tg?.ready();
+    tg?.expand();
+    // Без этого свайп вниз по меню закрывает весь Mini App — гость случайно
+    // сворачивает приложение, листая список блюд. disableVerticalSwipes
+    // (Bot API 7.7) убирает именно этот жест, requestFullscreen (8.0) ещё и
+    // прячет шапку Telegram сверху. Оба метода есть не во всех клиентах —
+    // isVersionAtLeast есть с 6.1, поэтому им можно проверять остальные.
+    if (tg?.isVersionAtLeast?.("7.7")) tg.disableVerticalSwipes?.();
+    if (tg?.isVersionAtLeast?.("8.0")) tg.requestFullscreen?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -145,16 +169,30 @@ function MenuContent({
   const visibleDishes = searchResults ?? (activeCategory ? dishesByCategory.get(activeCategory.id) ?? [] : []);
 
   return (
-    <div className="min-h-screen bg-[#FBF3E6] pb-28 text-[#3a2f22]" style={{ ["--accent" as string]: accent }}>
+    <div
+      className="relative min-h-screen pb-28 transition-colors"
+      style={{ ["--accent" as string]: accent, background: theme.bg, color: theme.text }}
+    >
       {/* Cover + logo */}
-      <div className="relative h-48 w-full overflow-hidden bg-[#e7ddcd] sm:h-60">
+      <div className="relative h-48 w-full overflow-hidden sm:h-60" style={{ background: theme.cardMuted }}>
         {venue.cover_url && (
           <Image src={venue.cover_url} alt={venue.name} fill sizes="100vw" priority className="object-cover" />
         )}
       </div>
 
+      <div className="absolute right-3 top-3 flex gap-2">
+        <button
+          onClick={toggleTheme}
+          aria-label={dark ? "Светлая тема" : "Тёмная тема"}
+          className="flex h-9 w-9 items-center justify-center rounded-full shadow-sm"
+          style={{ background: theme.card, color: theme.text }}
+        >
+          {dark ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
+      </div>
+
       <div className="relative -mt-10 flex justify-center">
-        <div className="relative h-20 w-20 overflow-hidden rounded-full border-4 border-[#FBF3E6] bg-white shadow-md">
+        <div className="relative h-20 w-20 overflow-hidden rounded-full border-4 bg-white shadow-md" style={{ borderColor: theme.bg }}>
           {venue.logo_url && (
             <Image src={venue.logo_url} alt={venue.name} fill sizes="80px" className="object-cover" />
           )}
@@ -171,7 +209,8 @@ function MenuContent({
                   href={venue.telegram}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#3a2f22] shadow-sm"
+                  className="flex h-7 w-7 items-center justify-center rounded-full shadow-sm"
+                  style={{ background: theme.card, color: theme.text }}
                 >
                   <Send size={13} />
                 </a>
@@ -181,7 +220,8 @@ function MenuContent({
                   href={venue.instagram}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#3a2f22] shadow-sm"
+                  className="flex h-7 w-7 items-center justify-center rounded-full shadow-sm"
+                  style={{ background: theme.card, color: theme.text }}
                 >
                   <Camera size={13} />
                 </a>
@@ -189,9 +229,9 @@ function MenuContent({
             </div>
           )}
         </div>
-        {venue.description && <p className="mt-1 text-sm text-[#8a7a63]">{venue.description}</p>}
+        {venue.description && <p className="mt-1 text-sm" style={{ color: theme.muted }}>{venue.description}</p>}
         {table && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
             <span
               className="inline-block rounded-full px-3 py-1 text-xs font-medium text-white"
               style={{ background: accent }}
@@ -202,7 +242,7 @@ function MenuContent({
               onClick={handleCallWaiter}
               disabled={waiterState !== "idle"}
               className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium disabled:opacity-70"
-              style={{ borderColor: accent, color: waiterState === "idle" ? accent : "#8a7a63" }}
+              style={{ borderColor: accent, color: waiterState === "idle" ? accent : theme.muted }}
             >
               <Bell size={12} />
               {waiterState === "idle" && t.callWaiter}
@@ -212,17 +252,17 @@ function MenuContent({
             </button>
           </div>
         )}
-        {table && <p className="mt-1.5 text-[11px] text-[#8a7a63]">{t.sharedCartHint}</p>}
+        {table && <p className="mt-1.5 text-[11px]" style={{ color: theme.muted }}>{t.sharedCartHint}</p>}
       </div>
 
       {venue.languages.length > 1 && (
         <div className="mt-3 flex justify-center">
-          <div className="flex overflow-hidden rounded-full border border-[#e7ddcd] bg-white text-xs shadow-sm">
+          <div className="flex overflow-hidden rounded-full border text-xs shadow-sm" style={{ borderColor: theme.border, background: theme.card }}>
             <button
               onClick={() => setLang("ru")}
               aria-pressed={lang === "ru"}
               className="px-3 py-1"
-              style={lang === "ru" ? { background: accent, color: "white" } : { color: "#8a7a63" }}
+              style={lang === "ru" ? { background: accent, color: "white" } : { color: theme.muted }}
             >
               RU
             </button>
@@ -230,7 +270,7 @@ function MenuContent({
               onClick={() => setLang("uz")}
               aria-pressed={lang === "uz"}
               className="px-3 py-1"
-              style={lang === "uz" ? { background: accent, color: "white" } : { color: "#8a7a63" }}
+              style={lang === "uz" ? { background: accent, color: "white" } : { color: theme.muted }}
             >
               UZ
             </button>
@@ -240,21 +280,21 @@ function MenuContent({
 
       {/* Info card */}
       {(venue.address || venue.phone || open !== null) && (
-        <div className="mx-4 mt-4 space-y-2 rounded-2xl bg-white p-4 text-sm shadow-sm">
+        <div className="mx-4 mt-4 space-y-2 rounded-2xl p-4 text-sm shadow-sm" style={{ background: theme.card }}>
           {venue.address && (
-            <div className="flex items-center gap-2 text-[#5a4d3c]">
-              <MapPin size={15} className="shrink-0 text-[#8a7a63]" /> {venue.address}
+            <div className="flex items-center gap-2" style={{ color: theme.text }}>
+              <MapPin size={15} className="shrink-0" style={{ color: theme.muted }} /> {venue.address}
             </div>
           )}
           {venue.phone && (
-            <a href={`tel:${venue.phone}`} className="flex items-center gap-2 text-[#5a4d3c]">
-              <Phone size={15} className="shrink-0 text-[#8a7a63]" /> {venue.phone}
+            <a href={`tel:${venue.phone}`} className="flex items-center gap-2" style={{ color: theme.text }}>
+              <Phone size={15} className="shrink-0" style={{ color: theme.muted }} /> {venue.phone}
             </a>
           )}
           {open !== null && (
             <div className="flex items-center gap-2">
-              <Clock size={15} className="shrink-0 text-[#8a7a63]" />
-              <span className={open ? "text-emerald-600" : "text-red-500"}>{open ? t.open : t.closed}</span>
+              <Clock size={15} className="shrink-0" style={{ color: theme.muted }} />
+              <span className={open ? "text-emerald-500" : "text-red-500"}>{open ? t.open : t.closed}</span>
             </div>
           )}
         </div>
@@ -262,14 +302,15 @@ function MenuContent({
 
       {/* Search */}
       <div className="mx-4 mt-4">
-        <div className="flex items-center gap-2 rounded-full border border-[#e7ddcd] bg-white px-4 py-2.5 shadow-sm">
-          <Search size={16} className="text-[#8a7a63]" aria-hidden />
+        <div className="flex items-center gap-2 rounded-full border px-4 py-2.5 shadow-sm" style={{ borderColor: theme.border, background: theme.card }}>
+          <Search size={16} style={{ color: theme.muted }} aria-hidden />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t.search}
             aria-label={t.search}
-            className="w-full bg-transparent text-sm outline-none placeholder:text-[#b3a48c]"
+            className="w-full bg-transparent text-sm outline-none"
+            style={{ color: theme.text }}
           />
         </div>
       </div>
@@ -285,7 +326,7 @@ function MenuContent({
               style={
                 activeCategory?.id === c.id
                   ? { background: accent, borderColor: accent, color: "white" }
-                  : { borderColor: "#e7ddcd", color: "#5a4d3c", background: "white" }
+                  : { borderColor: theme.border, color: theme.text, background: theme.card }
               }
             >
               {lang === "uz" && c.name_uz ? c.name_uz : c.name}
@@ -297,19 +338,20 @@ function MenuContent({
       {/* Content */}
       <div className="px-4 pt-4">
         {search ? (
-          <DishGrid dishes={visibleDishes} lang={lang} t={t} accent={accent} />
+          <DishGrid dishes={visibleDishes} lang={lang} t={t} accent={accent} theme={theme} />
         ) : activeCategory ? (
           <>
             <button
               onClick={() => setActiveCategory(null)}
-              className="mb-3 flex items-center gap-1 text-sm font-medium text-[#5a4d3c]"
+              className="mb-3 flex items-center gap-1 text-sm font-medium"
+              style={{ color: theme.text }}
             >
               <ChevronLeft size={16} /> {t.back}
             </button>
             <h2 className="mb-3 text-lg font-semibold">
               {lang === "uz" && activeCategory.name_uz ? activeCategory.name_uz : activeCategory.name}
             </h2>
-            <DishGrid dishes={visibleDishes} lang={lang} t={t} accent={accent} />
+            <DishGrid dishes={visibleDishes} lang={lang} t={t} accent={accent} theme={theme} />
           </>
         ) : (
           <div className="space-y-4">
@@ -350,7 +392,8 @@ function MenuContent({
         href="/"
         target="_blank"
         rel="noreferrer"
-        className="mt-10 block text-center text-[11px] text-[#c2b394] underline decoration-dotted underline-offset-2 transition hover:text-[#8a7a63]"
+        className="mt-10 block text-center text-[11px] underline decoration-dotted underline-offset-2 transition"
+        style={{ color: theme.mutedLight }}
       >
         ⚡ Работает на Menora — сделать такое же меню
       </a>
@@ -370,7 +413,7 @@ function MenuContent({
       )}
 
       {cartOpen && (
-        <CartSheet venueId={venue.id} accent={accent} tableNumber={table} onClose={() => setCartOpen(false)} />
+        <CartSheet venueId={venue.id} accent={accent} tableNumber={table} theme={theme} onClose={() => setCartOpen(false)} />
       )}
     </div>
   );
@@ -381,20 +424,22 @@ function DishGrid({
   lang,
   t,
   accent,
+  theme,
 }: {
   dishes: Dish[];
   lang: "ru" | "uz";
   t: (typeof DICT)["ru"];
   accent: string;
+  theme: MenuTheme;
 }) {
   if (!dishes.length) {
-    return <p className="py-8 text-center text-sm text-[#b3a48c]">Ничего не найдено</p>;
+    return <p className="py-8 text-center text-sm" style={{ color: theme.mutedLight }}>Ничего не найдено</p>;
   }
 
   return (
     <div className="space-y-3">
       {dishes.map((d) => (
-        <DishCard key={d.id} dish={d} lang={lang} t={t} accent={accent} />
+        <DishCard key={d.id} dish={d} lang={lang} t={t} accent={accent} theme={theme} />
       ))}
     </div>
   );
@@ -405,11 +450,13 @@ function DishCard({
   lang,
   t,
   accent,
+  theme,
 }: {
   dish: Dish;
   lang: "ru" | "uz";
   t: (typeof DICT)["ru"];
   accent: string;
+  theme: MenuTheme;
 }) {
   const cart = useCart();
   const name = lang === "uz" && dish.name_uz ? dish.name_uz : dish.name;
@@ -422,8 +469,11 @@ function DishCard({
   const available = dish.is_available && !dish.out_of_stock;
 
   return (
-    <div className={`flex gap-3 overflow-hidden rounded-2xl bg-white p-3 shadow-sm ${!available ? "opacity-60" : ""}`}>
-      <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-[#f1e9da]">
+    <div
+      className={`flex gap-3 overflow-hidden rounded-2xl p-3 shadow-sm ${!available ? "opacity-60" : ""}`}
+      style={{ background: theme.card }}
+    >
+      <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl" style={{ background: theme.cardMuted }}>
         {dish.photo_url && (
           <Image src={dish.photo_url} alt={name} fill sizes="96px" className="object-cover" />
         )}
@@ -436,14 +486,14 @@ function DishCard({
       <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
         <div>
           <p className="truncate text-sm font-semibold">{name}</p>
-          {description && <p className="mt-0.5 line-clamp-2 text-xs text-[#8a7a63]">{description}</p>}
+          {description && <p className="mt-0.5 line-clamp-2 text-xs" style={{ color: theme.muted }}>{description}</p>}
         </div>
 
         <div className="mt-1 flex items-center justify-between">
           <p className="text-sm font-semibold">
             {dish.discount_price != null ? (
               <>
-                <span className="mr-1.5 text-xs font-normal text-[#b3a48c] line-through">
+                <span className="mr-1.5 text-xs font-normal line-through" style={{ color: theme.mutedLight }}>
                   {formatPrice(dish.price, dish.currency)}
                 </span>
                 <span style={{ color: accent }}>{formatPrice(dish.discount_price, dish.currency)}</span>
@@ -468,7 +518,8 @@ function DishCard({
                 <button
                   onClick={() => cart.setQty(dish.id, qty - 1)}
                   aria-label={`${name}: -1`}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[#e7ddcd]"
+                  className="flex h-7 w-7 items-center justify-center rounded-full border"
+                  style={{ borderColor: theme.border, color: theme.text }}
                 >
                   <Minus size={13} />
                 </button>
