@@ -20,6 +20,7 @@ import {
   priceCategoriesMarkup,
   priceDishesMarkup,
   stageButtonFor,
+  radiusPickerMarkup,
 } from "@/lib/telegram-keyboard";
 import { formatPrice, formatTime } from "@/lib/menu-utils";
 import { fetchStaffChatIds, notifyStaff } from "@/lib/venue-staff";
@@ -48,6 +49,9 @@ type VenueRow = {
   telegram_chat_id: number | null;
   staff_bot_language: string | null;
   staff_invite_code: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  delivery_radius_km: number | null;
 };
 
 function formatTodayHours(workingHours: unknown, lang: BotLang): string | null {
@@ -355,7 +359,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
   const { data: venue } = await admin
     .from("venues")
     .select(
-      "id, name, slug, description, cover_url, address, phone, working_hours, telegram_bot_token, telegram_chat_id, staff_bot_language, staff_invite_code",
+      "id, name, slug, description, cover_url, address, phone, working_hours, telegram_bot_token, telegram_chat_id, staff_bot_language, staff_invite_code, latitude, longitude, delivery_radius_km",
     )
     .eq("id", venueId)
     .maybeSingle<VenueRow>();
@@ -572,6 +576,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
       } else {
         toast = t.dishNotFoundToast;
       }
+    } else if (action === "setradius") {
+      const rt = STAFF_TEXT[staffLang].radius;
+      if (parts[1] === "relocate") {
+        await admin.from("bot_pending_venue_location").upsert({ chat_id: chatId, venue_id: venueId });
+        await editTelegramMessage(token, chatId, messageId, rt.askLocation, emptyMarkup());
+      } else if (venue.latitude == null || venue.longitude == null) {
+        // Гонка: успели нажать кнопку до того, как локация сохранилась.
+        toast = rt.needLocationFirst;
+      } else {
+        const km = Number(parts[1]) || null;
+        await admin.from("venues").update({ delivery_radius_km: km }).eq("id", venueId);
+        toast = rt.radiusSaved(km);
+        await editTelegramMessage(token, chatId, messageId, rt.radiusSaved(km), emptyMarkup());
+      }
     }
 
     await answerTelegramCallback(token, cb.id, toast);
@@ -695,6 +713,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
     return NextResponse.json({ ok: true });
   }
 
+  // Персонал прислал геолокацию (📎 → Геопозиция в Telegram) — сработает,
+  // только если до этого нажали "📍 Радиус доставки" без сохранённых
+  // координат заведения (bot_pending_venue_location, see above).
+  if (message.location) {
+    const { data: pendingLocation } = await admin
+      .from("bot_pending_venue_location")
+      .select("venue_id")
+      .eq("chat_id", chatId)
+      .maybeSingle();
+    if (pendingLocation) {
+      await admin.from("bot_pending_venue_location").delete().eq("chat_id", chatId);
+      await admin
+        .from("venues")
+        .update({ latitude: message.location.latitude, longitude: message.location.longitude })
+        .eq("id", venueId);
+      const rt = STAFF_TEXT[staffLang].radius;
+      await sendTelegramMessage(token, chatId, rt.locationSaved);
+      await sendTelegramMessage(token, chatId, rt.chooseRadius(venue.delivery_radius_km), radiusPickerMarkup(staffLang));
+      return NextResponse.json({ ok: true });
+    }
+  }
+
   // Server-tracked "waiting for a new price" state (see the "editprice"
   // callback above) — checked on every staff text message so it works no
   // matter how they send the number.
@@ -771,6 +811,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
       await admin.from("venues").update({ staff_invite_code: code }).eq("id", venue.id);
     }
     await sendTelegramMessage(token, chatId, STAFF_TEXT[staffLang].inviteCode(code), mainReplyMarkup(siteUrl, staffLang));
+    return NextResponse.json({ ok: true });
+  }
+
+  if (text === staffLabels.radius) {
+    const rt = STAFF_TEXT[staffLang].radius;
+    if (venue.latitude == null || venue.longitude == null) {
+      // Нет координат заведения — сначала просим их прислать через саму
+      // Telegram (message.location, обрабатывается ниже в этой функции),
+      // а не спрашиваем через веб-форму, раз мы и так уже внутри бота.
+      await admin.from("bot_pending_venue_location").upsert({ chat_id: chatId, venue_id: venueId });
+      await sendTelegramMessage(token, chatId, rt.askLocation);
+    } else {
+      await sendTelegramMessage(token, chatId, rt.chooseRadius(venue.delivery_radius_km), radiusPickerMarkup(staffLang));
+    }
     return NextResponse.json({ ok: true });
   }
 

@@ -1,22 +1,26 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { createOrder } from "@/lib/orders-actions";
 import { useCart } from "@/lib/cart-context";
 import type { MenuTheme } from "@/lib/menu-theme";
 import { LIGHT_THEME } from "@/lib/menu-theme";
+import type { VenueLocation } from "@/lib/geo";
+import { distanceKm } from "@/lib/geo";
 
 export default function CheckoutForm({
   venueId,
   accent,
   tableNumber,
   theme = LIGHT_THEME,
+  venueLocation = null,
   onSuccess,
 }: {
   venueId: string;
   accent: string;
   tableNumber?: string;
   theme?: MenuTheme;
+  venueLocation?: VenueLocation | null;
   onSuccess: (orderId: string) => void;
 }) {
   const cart = useCart();
@@ -24,11 +28,25 @@ export default function CheckoutForm({
   const [address, setAddress] = useState("");
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  // Известны только если гость сам нажал "Определить местоположение" — при
+  // ручном вводе адреса текстом координат нет, и проверить радиус нечем.
+  const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null);
   const isDineIn = !!tableNumber;
   // One id per checkout attempt (this form remounts fresh each time the cart
   // sheet opens) — a retry/double-tap within the same attempt reuses it, so
   // the server can de-dupe instead of creating a second order.
   const [clientRequestId] = useState(() => crypto.randomUUID());
+
+  const distanceFromVenue = useMemo(() => {
+    if (!customerCoords || !venueLocation) return null;
+    return distanceKm(venueLocation.lat, venueLocation.lng, customerCoords.lat, customerCoords.lng);
+  }, [customerCoords, venueLocation]);
+
+  const outOfRadius =
+    fulfillment === "delivery" &&
+    distanceFromVenue != null &&
+    venueLocation?.radiusKm != null &&
+    distanceFromVenue > venueLocation.radiusKm;
 
   const action = createOrder.bind(null, venueId);
   const [state, formAction, pending] = useActionState<
@@ -42,6 +60,10 @@ export default function CheckoutForm({
       );
       formData.set("client_request_id", clientRequestId);
       formData.set("tg_init_data", window.Telegram?.WebApp?.initData ?? "");
+      if (customerCoords) {
+        formData.set("customer_lat", String(customerCoords.lat));
+        formData.set("customer_lng", String(customerCoords.lng));
+      }
       const result = await action(prevState, formData);
       if (result.ok && result.orderId) {
         cart.clear();
@@ -62,6 +84,7 @@ export default function CheckoutForm({
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
+        setCustomerCoords({ lat: latitude, lng: longitude });
         const lat = latitude.toFixed(6);
         const lng = longitude.toFixed(6);
         // Яндекс.Карты принимают координаты в порядке долгота,широта — в
@@ -136,7 +159,12 @@ export default function CheckoutForm({
                 name="address"
                 required
                 value={address}
-                onChange={(e) => setAddress(e.target.value)}
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  // Адрес поменяли руками после определения местоположения —
+                  // координаты больше не гарантированно соответствуют ему.
+                  setCustomerCoords(null);
+                }}
                 className="checkout-input"
                 placeholder="Улица, дом, квартира"
               />
@@ -161,6 +189,12 @@ export default function CheckoutForm({
                 </button>
               </div>
               {locationError && <p className="mt-1 text-xs text-red-500">{locationError}</p>}
+              {outOfRadius && distanceFromVenue != null && venueLocation?.radiusKm != null && (
+                <p className="mt-1 text-xs font-medium text-red-500">
+                  Вы примерно в {Math.round(distanceFromVenue)} км от заведения — доставка работает в радиусе{" "}
+                  {venueLocation.radiusKm} км. Свяжитесь с заведением напрямую или выберите самовывоз.
+                </p>
+              )}
             </Field>
           )}
         </>
@@ -183,7 +217,7 @@ export default function CheckoutForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || outOfRadius}
         className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
         style={{ background: accent }}
       >

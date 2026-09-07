@@ -17,7 +17,7 @@ export function mainReplyMarkup(siteUrl: string, lang: BotLang): TgMarkup {
       [{ text: labels.tables }, { text: labels.delivery }],
       [{ text: labels.prices }, { text: labels.stats }],
       [{ text: labels.cabinet, web_app: { url: `${siteUrl}/cabinet` } }, { text: labels.invite }],
-      [{ text: labels.language }],
+      [{ text: labels.radius }, { text: labels.language }],
     ],
     resize_keyboard: true,
   };
@@ -83,6 +83,21 @@ export function priceDishesMarkup(dishes: { id: string; name: string; priceLabel
   const rows = dishes.map((d) => [{ text: `${d.name} — ${d.priceLabel}`, callback_data: `editprice|${d.id}` }]);
   rows.push([{ text: STAFF_TEXT[lang].tables.backButton, callback_data: "pricecats" }]);
   return { inline_keyboard: rows };
+}
+
+// Shown after staff taps "📍 Радиус доставки" and the venue already has
+// coordinates saved (asks for location first otherwise — see webhook).
+// "0" is the sentinel for "no limit" (delivery_radius_km = null).
+export function radiusPickerMarkup(lang: BotLang): TgMarkup {
+  const t = STAFF_TEXT[lang].radius;
+  return {
+    inline_keyboard: [
+      [10, 20, 30, 40].map((km) => ({ text: `${km} км`, callback_data: `setradius|${km}` })),
+      [{ text: t.unlimitedLabel, callback_data: "setradius|0" }],
+      [{ text: t.relocateButton, callback_data: "setradius|relocate" }],
+      [{ text: STAFF_TEXT[lang].tables.backButton, callback_data: "close" }],
+    ],
+  };
 }
 
 // Shown any time staff taps "🌐 Язык"/"Til".

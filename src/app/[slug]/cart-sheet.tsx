@@ -6,6 +6,7 @@ import { useCart } from "@/lib/cart-context";
 import { formatPrice } from "@/lib/menu-utils";
 import type { MenuTheme } from "@/lib/menu-theme";
 import { LIGHT_THEME } from "@/lib/menu-theme";
+import type { VenueLocation } from "@/lib/geo";
 import CheckoutForm from "./checkout-form";
 
 export default function CartSheet({
@@ -13,12 +14,14 @@ export default function CartSheet({
   accent,
   tableNumber,
   theme = LIGHT_THEME,
+  venueLocation = null,
   onClose,
 }: {
   venueId: string;
   accent: string;
   tableNumber?: string;
   theme?: MenuTheme;
+  venueLocation?: VenueLocation | null;
   onClose: () => void;
 }) {
   const cart = useCart();
@@ -107,6 +110,7 @@ export default function CartSheet({
             accent={accent}
             tableNumber={tableNumber}
             theme={theme}
+            venueLocation={venueLocation}
             onSuccess={(id) => {
               setOrderId(id);
               setStep("success");

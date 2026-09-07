@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -29,45 +29,6 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
-        }
-        Relationships: []
-      }
-      venue_staff: {
-        Row: {
-          venue_id: string
-          chat_id: number
-          name: string | null
-          added_at: string
-        }
-        Insert: {
-          venue_id: string
-          chat_id: number
-          name?: string | null
-          added_at?: string
-        }
-        Update: {
-          venue_id?: string
-          chat_id?: number
-          name?: string | null
-          added_at?: string
-        }
-        Relationships: []
-      }
-      bot_admins: {
-        Row: {
-          chat_id: number
-          name: string | null
-          added_at: string
-        }
-        Insert: {
-          chat_id: number
-          name?: string | null
-          added_at?: string
-        }
-        Update: {
-          chat_id?: number
-          name?: string | null
-          added_at?: string
         }
         Relationships: []
       }
@@ -107,6 +68,24 @@ export type Database = {
           },
         ]
       }
+      bot_admins: {
+        Row: {
+          added_at: string
+          chat_id: number
+          name: string | null
+        }
+        Insert: {
+          added_at?: string
+          chat_id: number
+          name?: string | null
+        }
+        Update: {
+          added_at?: string
+          chat_id?: number
+          name?: string | null
+        }
+        Relationships: []
+      }
       bot_pending_price_edits: {
         Row: {
           chat_id: number
@@ -143,6 +122,39 @@ export type Database = {
           },
           {
             foreignKeyName: "bot_pending_price_edits_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_pending_venue_location: {
+        Row: {
+          chat_id: number
+          created_at: string
+          venue_id: string
+        }
+        Insert: {
+          chat_id: number
+          created_at?: string
+          venue_id: string
+        }
+        Update: {
+          chat_id?: number
+          created_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_pending_venue_location_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venue_stats"
+            referencedColumns: ["venue_id"]
+          },
+          {
+            foreignKeyName: "bot_pending_venue_location_venue_id_fkey"
             columns: ["venue_id"]
             isOneToOne: false
             referencedRelation: "venues"
@@ -215,9 +227,9 @@ export type Database = {
           is_popular: boolean
           name: string
           name_uz: string | null
+          out_of_stock: boolean
           photo_url: string | null
           price: number
-          out_of_stock: boolean
           sort_order: number
           updated_at: string
           velora_product_id: string | null
@@ -467,7 +479,7 @@ export type Database = {
           discount?: number
           fulfillment: string
           id?: string
-          order_number?: number
+          order_number: number
           phone: string
           points_earned?: number
           points_redeemed?: number
@@ -872,6 +884,42 @@ export type Database = {
           },
         ]
       }
+      venue_staff: {
+        Row: {
+          added_at: string
+          chat_id: number
+          name: string | null
+          venue_id: string
+        }
+        Insert: {
+          added_at?: string
+          chat_id: number
+          name?: string | null
+          venue_id: string
+        }
+        Update: {
+          added_at?: string
+          chat_id?: number
+          name?: string | null
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "venue_staff_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venue_stats"
+            referencedColumns: ["venue_id"]
+          },
+          {
+            foreignKeyName: "venue_staff_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       venue_users: {
         Row: {
           created_at: string
@@ -917,12 +965,15 @@ export type Database = {
           address: string | null
           cover_url: string | null
           created_at: string
+          delivery_radius_km: number | null
           description: string | null
           id: string
           instagram: string | null
           is_active: boolean
           languages: string[]
+          latitude: number | null
           logo_url: string | null
+          longitude: number | null
           loyalty_percent: number
           name: string
           next_order_number: number
@@ -946,12 +997,15 @@ export type Database = {
           address?: string | null
           cover_url?: string | null
           created_at?: string
+          delivery_radius_km?: number | null
           description?: string | null
           id?: string
           instagram?: string | null
           is_active?: boolean
           languages?: string[]
+          latitude?: number | null
           logo_url?: string | null
+          longitude?: number | null
           loyalty_percent?: number
           name: string
           next_order_number?: number
@@ -975,12 +1029,15 @@ export type Database = {
           address?: string | null
           cover_url?: string | null
           created_at?: string
+          delivery_radius_km?: number | null
           description?: string | null
           id?: string
           instagram?: string | null
           is_active?: boolean
           languages?: string[]
+          latitude?: number | null
           logo_url?: string | null
+          longitude?: number | null
           loyalty_percent?: number
           name?: string
           next_order_number?: number
@@ -1082,12 +1139,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1111,11 +1168,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1136,11 +1193,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1161,11 +1218,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1178,11 +1235,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // telegram_chat_id/telegram_connect_code, which must not reach the public
 // page's client bundle (see [slug]/menu-view.tsx PublicVenue type).
 const PUBLIC_VENUE_COLUMNS =
-  "id, slug, name, description, logo_url, cover_url, address, phone, instagram, telegram, working_hours, languages, primary_color, accent_color, is_active";
+  "id, slug, name, description, logo_url, cover_url, address, phone, instagram, telegram, working_hours, languages, primary_color, accent_color, is_active, latitude, longitude, delivery_radius_km";
 
 async function getVenueData(slug: string) {
   const supabase = await createClient();

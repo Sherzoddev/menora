@@ -136,7 +136,7 @@ export function orderWord(lang: BotLang, count: number): string {
 export const STAFF_TEXT: Record<
   BotLang,
   {
-    labels: { tables: string; delivery: string; prices: string; stats: string; cabinet: string; invite: string; language: string };
+    labels: { tables: string; delivery: string; prices: string; stats: string; cabinet: string; invite: string; radius: string; language: string };
     connected: (venueName: string) => string;
     menuOpenedBelow: string;
     fallbackUseButtons: (venueName: string) => string;
@@ -200,10 +200,19 @@ export const STAFF_TEXT: Record<
     tagAlert: (orderShortId: string, tag: string) => string;
     waiterCallAlert: (table: string | null) => string;
     inviteCode: (code: string) => string;
+    radius: {
+      askLocation: string;
+      locationSaved: string;
+      chooseRadius: (currentKm: number | null) => string;
+      unlimitedLabel: string;
+      relocateButton: string;
+      radiusSaved: (km: number | null) => string;
+      needLocationFirst: string;
+    };
   }
 > = {
   ru: {
-    labels: { tables: "🍽 Столы", delivery: "🚚 Доставка", prices: "💰 Цены", stats: "📊 Статистика", cabinet: "🖥 Кабинет", invite: "➕ Добавить сотрудника", language: "🌐 Язык" },
+    labels: { tables: "🍽 Столы", delivery: "🚚 Доставка", prices: "💰 Цены", stats: "📊 Статистика", cabinet: "🖥 Кабинет", invite: "➕ Добавить сотрудника", radius: "📍 Радиус доставки", language: "🌐 Язык" },
     connected: (name) => `✅ Подключено к заведению «${name}». Новые заказы будут приходить сюда.\n\nИспользуйте кнопки внизу 👇`,
     menuOpenedBelow: "Меню открыто внизу 👇",
     fallbackUseButtons: (name) => `Меню «${name}» — используйте кнопки внизу 👇`,
@@ -269,9 +278,19 @@ export const STAFF_TEXT: Record<
     waiterCallAlert: (table) => `🔔 Гость${table ? ` (стол №${table})` : ""} просит официанта`,
     inviteCode: (code) =>
       `➕ Фраза для нового сотрудника: <code>${code}</code>\n\nПередайте её человеку — пусть напишет её этому же боту (просто текстом). Он сам получит доступ к этому меню: заказы, статистика, цены.`,
+    radius: {
+      askLocation: "📍 Сначала пришлите геолокацию заведения — нажмите на скрепку 📎 в Telegram → «Геопозиция» и отправьте её сюда.",
+      locationSaved: "✅ Локация заведения сохранена.",
+      chooseRadius: (km) =>
+        `📍 Выберите радиус доставки${km != null ? ` (сейчас: ${km} км)` : ""}. Гостям дальше этого расстояния сайт покажет, что доставка недоступна.`,
+      unlimitedLabel: "Без ограничений",
+      relocateButton: "📍 Обновить локацию заведения",
+      radiusSaved: (km) => (km == null ? "✅ Ограничение по радиусу снято." : `✅ Радиус доставки: ${km} км.`),
+      needLocationFirst: "Сначала пришлите геолокацию заведения (см. выше).",
+    },
   },
   uz: {
-    labels: { tables: "🍽 Stollar", delivery: "🚚 Yetkazish", prices: "💰 Narxlar", stats: "📊 Statistika", cabinet: "🖥 Kabinet", invite: "➕ Xodim qo'shish", language: "🌐 Til" },
+    labels: { tables: "🍽 Stollar", delivery: "🚚 Yetkazish", prices: "💰 Narxlar", stats: "📊 Statistika", cabinet: "🖥 Kabinet", invite: "➕ Xodim qo'shish", radius: "📍 Yetkazish radiusi", language: "🌐 Til" },
     connected: (name) => `✅ «${name}» muassasasiga ulandingiz. Yangi buyurtmalar shu yerga keladi.\n\nPastdagi tugmalardan foydalaning 👇`,
     menuOpenedBelow: "Menyu pastda ochiq 👇",
     fallbackUseButtons: (name) => `«${name}» menyusi — pastdagi tugmalardan foydalaning 👇`,
@@ -337,5 +356,15 @@ export const STAFF_TEXT: Record<
     waiterCallAlert: (table) => `🔔 Mehmon${table ? ` (stol №${table})` : ""} ofitsiantni chaqirmoqda`,
     inviteCode: (code) =>
       `➕ Yangi xodim uchun ibora: <code>${code}</code>\n\nUni odamga bering — u shu botga matn qilib yuborsin. Shu menyu unga ham ochiladi: buyurtmalar, statistika, narxlar.`,
+    radius: {
+      askLocation: "📍 Avval muassasa geolokatsiyasini yuboring — Telegram'da skrepka 📎 → «Joylashuv» va shu yerga yuboring.",
+      locationSaved: "✅ Muassasa lokatsiyasi saqlandi.",
+      chooseRadius: (km) =>
+        `📍 Yetkazish radiusini tanlang${km != null ? ` (hozir: ${km} km)` : ""}. Bu masofadan uzoqroq mehmonlarga sayt yetkazish mavjud emasligini ko'rsatadi.`,
+      unlimitedLabel: "Cheklovsiz",
+      relocateButton: "📍 Muassasa lokatsiyasini yangilash",
+      radiusSaved: (km) => (km == null ? "✅ Radius bo'yicha cheklov olib tashlandi." : `✅ Yetkazish radiusi: ${km} km.`),
+      needLocationFirst: "Avval muassasa geolokatsiyasini yuboring (yuqoriga qarang).",
+    },
   },
 };

@@ -30,6 +30,9 @@ type Venue = Pick<
   | "primary_color"
   | "accent_color"
   | "is_active"
+  | "latitude"
+  | "longitude"
+  | "delivery_radius_km"
 >;
 type Category = Tables<"categories">;
 type Dish = Tables<"dishes">;
@@ -413,7 +416,18 @@ function MenuContent({
       )}
 
       {cartOpen && (
-        <CartSheet venueId={venue.id} accent={accent} tableNumber={table} theme={theme} onClose={() => setCartOpen(false)} />
+        <CartSheet
+          venueId={venue.id}
+          accent={accent}
+          tableNumber={table}
+          theme={theme}
+          venueLocation={
+            venue.latitude != null && venue.longitude != null
+              ? { lat: venue.latitude, lng: venue.longitude, radiusKm: venue.delivery_radius_km }
+              : null
+          }
+          onClose={() => setCartOpen(false)}
+        />
       )}
     </div>
   );

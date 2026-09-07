@@ -12,6 +12,7 @@ import { resolveBotLang } from "@/lib/bot-i18n";
 import { pushOrderToVelora } from "@/lib/velora-actions";
 import { notifyStaff } from "@/lib/venue-staff";
 import { advanceOrderStatus, sendOrderTracker } from "@/lib/order-status";
+import { distanceKm } from "@/lib/geo";
 
 export type CheckoutItem = {
   dishId: string;
@@ -37,6 +38,8 @@ export async function createOrder(
   const itemsRaw = String(formData.get("items") ?? "[]");
   const clientRequestId = String(formData.get("client_request_id") ?? "").trim() || null;
   const tgInitData = String(formData.get("tg_init_data") ?? "").trim();
+  const customerLat = formData.get("customer_lat") ? Number(formData.get("customer_lat")) : null;
+  const customerLng = formData.get("customer_lng") ? Number(formData.get("customer_lng")) : null;
 
   if (!customerName) return { error: "Введите имя" };
   if (!phone) return { error: "Введите телефон" };
@@ -58,10 +61,31 @@ export async function createOrder(
   const { data: venue } = await supabase
     .from("venues")
     .select(
-      "name, telegram_chat_id, telegram_bot_token, loyalty_percent, staff_bot_language, velora_venue_id, velora_token",
+      "name, telegram_chat_id, telegram_bot_token, loyalty_percent, staff_bot_language, velora_venue_id, velora_token, latitude, longitude, delivery_radius_km",
     )
     .eq("id", venueId)
     .single();
+
+  // Проверяем радиус доставки только когда есть все три составляющие:
+  // координаты заведения (владелец указал через бота), радиус (тоже через
+  // бота) и координаты гостя (он сам нажал "Определить местоположение" —
+  // при ручном вводе адреса текстом координат нет, и мы не можем это
+  // посчитать без платного геокодирования).
+  if (
+    fulfillment === "delivery" &&
+    venue?.latitude != null &&
+    venue?.longitude != null &&
+    venue?.delivery_radius_km != null &&
+    customerLat != null &&
+    customerLng != null
+  ) {
+    const distance = distanceKm(venue.latitude, venue.longitude, customerLat, customerLng);
+    if (distance > venue.delivery_radius_km) {
+      return {
+        error: `Вы примерно в ${Math.round(distance)} км от заведения — доставка работает в радиусе ${venue.delivery_radius_km} км. Свяжитесь с заведением напрямую или выберите самовывоз.`,
+      };
+    }
+  }
 
   // A retry/double-tap (flaky connection, impatient double-click, Telegram
   // Mini App re-submitting) reuses the same client_request_id — return the
@@ -212,6 +236,10 @@ export async function createOrder(
     points_redeemed: pointsRedeemed,
     client_request_id: clientRequestId,
     customer_telegram_chat_id: customerTelegramChatId,
+    // Overwritten unconditionally by the assign_order_number() BEFORE INSERT
+    // trigger — required here only because generated types mark the column
+    // NOT NULL (PostgREST can't see the trigger default).
+    order_number: 0,
   });
 
   if (error) {
