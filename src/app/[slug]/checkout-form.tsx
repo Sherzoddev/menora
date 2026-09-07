@@ -52,7 +52,7 @@ export default function CheckoutForm({
     { error: null },
   );
 
-  function locateMe() {
+  function locateMe(provider: "google" | "yandex") {
     if (!navigator.geolocation) {
       setLocationError("Геолокация не поддерживается этим браузером");
       return;
@@ -62,7 +62,15 @@ export default function CheckoutForm({
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
-        setAddress(`Мои координаты: https://maps.google.com/?q=${latitude.toFixed(6)},${longitude.toFixed(6)}`);
+        const lat = latitude.toFixed(6);
+        const lng = longitude.toFixed(6);
+        // Яндекс.Карты принимают координаты в порядке долгота,широта — в
+        // обратном порядке относительно Google Maps.
+        const link =
+          provider === "yandex"
+            ? `https://yandex.ru/maps/?pt=${lng},${lat}&z=17&l=map`
+            : `https://maps.google.com/?q=${lat},${lng}`;
+        setAddress(`Мои координаты: ${link}`);
         setLocating(false);
       },
       () => {
@@ -124,24 +132,32 @@ export default function CheckoutForm({
 
           {fulfillment === "delivery" && (
             <Field label="Адрес доставки" theme={theme}>
-              <div className="flex gap-2">
-                <input
-                  name="address"
-                  required
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="checkout-input flex-1"
-                  placeholder="Улица, дом, квартира"
-                />
+              <input
+                name="address"
+                required
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="checkout-input"
+                placeholder="Улица, дом, квартира"
+              />
+              <div className="mt-1.5 flex gap-2">
                 <button
                   type="button"
-                  onClick={locateMe}
+                  onClick={() => locateMe("google")}
                   disabled={locating}
-                  title="Определить моё местоположение"
-                  className="shrink-0 rounded-xl border px-3 text-base disabled:opacity-60"
+                  className="flex-1 rounded-xl border px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
                   style={{ borderColor: accent, color: accent }}
                 >
-                  📍
+                  📍 Google Карты
+                </button>
+                <button
+                  type="button"
+                  onClick={() => locateMe("yandex")}
+                  disabled={locating}
+                  className="flex-1 rounded-xl border px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
+                  style={{ borderColor: accent, color: accent }}
+                >
+                  📍 Яндекс Карты
                 </button>
               </div>
               {locationError && <p className="mt-1 text-xs text-red-500">{locationError}</p>}
