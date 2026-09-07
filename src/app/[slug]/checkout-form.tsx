@@ -31,6 +31,9 @@ export default function CheckoutForm({
   // Известны только если гость сам нажал "Определить местоположение" — при
   // ручном вводе адреса текстом координат нет, и проверить радиус нечем.
   const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null);
+  // Ссылка на точку на карте — отдельно от текста адреса (раньше координаты
+  // пихались прямо в поле адреса вместо человекочитаемого текста).
+  const [mapLink, setMapLink] = useState<{ provider: "google" | "yandex"; url: string } | null>(null);
   const isDineIn = !!tableNumber;
   // One id per checkout attempt (this form remounts fresh each time the cart
   // sheet opens) — a retry/double-tap within the same attempt reuses it, so
@@ -82,7 +85,7 @@ export default function CheckoutForm({
     setLocating(true);
     setLocationError(null);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const { latitude, longitude } = pos.coords;
         setCustomerCoords({ lat: latitude, lng: longitude });
         const lat = latitude.toFixed(6);
@@ -93,7 +96,16 @@ export default function CheckoutForm({
           provider === "yandex"
             ? `https://yandex.ru/maps/?pt=${lng},${lat}&z=17&l=map`
             : `https://maps.google.com/?q=${lat},${lng}`;
-        setAddress(`Мои координаты: ${link}`);
+        setMapLink({ provider, url: link });
+        // Превращаем координаты в читаемый адрес — раньше в поле подставлялись
+        // голые координаты, что бесполезно для курьера и заведения.
+        try {
+          const res = await fetch(`/api/geocode/reverse?lat=${lat}&lng=${lng}`);
+          const data = await res.json();
+          setAddress(data.address || `Координаты: ${lat}, ${lng}`);
+        } catch {
+          setAddress(`Координаты: ${lat}, ${lng}`);
+        }
         setLocating(false);
       },
       () => {
@@ -164,6 +176,7 @@ export default function CheckoutForm({
                   // Адрес поменяли руками после определения местоположения —
                   // координаты больше не гарантированно соответствуют ему.
                   setCustomerCoords(null);
+                  setMapLink(null);
                 }}
                 className="checkout-input"
                 placeholder="Улица, дом, квартира"
@@ -188,6 +201,18 @@ export default function CheckoutForm({
                   📍 Яндекс Карты
                 </button>
               </div>
+              {locating && <p className="mt-1 text-xs" style={{ color: theme.muted }}>Определяем адрес...</p>}
+              {mapLink && (
+                <a
+                  href={mapLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-block text-xs underline"
+                  style={{ color: accent }}
+                >
+                  📍 Открыть точку на {mapLink.provider === "yandex" ? "Яндекс Картах" : "Google Картах"}
+                </a>
+              )}
               {locationError && <p className="mt-1 text-xs text-red-500">{locationError}</p>}
               {outOfRadius && distanceFromVenue != null && venueLocation?.radiusKm != null && (
                 <p className="mt-1 text-xs font-medium text-red-500">
