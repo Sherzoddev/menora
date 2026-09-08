@@ -93,6 +93,7 @@ export function radiusPickerMarkup(lang: BotLang): TgMarkup {
   return {
     inline_keyboard: [
       [10, 20, 30, 40].map((km) => ({ text: `${km} км`, callback_data: `setradius|${km}` })),
+      [{ text: t.customButton, callback_data: "setradius|custom" }],
       [{ text: t.unlimitedLabel, callback_data: "setradius|0" }],
       [{ text: t.relocateButton, callback_data: "setradius|relocate" }],
       [{ text: STAFF_TEXT[lang].tables.backButton, callback_data: "close" }],

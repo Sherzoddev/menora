@@ -66,23 +66,25 @@ export async function createOrder(
     .eq("id", venueId)
     .single();
 
-  // Проверяем радиус доставки только когда есть все три составляющие:
-  // координаты заведения (владелец указал через бота), радиус (тоже через
-  // бота) и координаты гостя (он сам нажал "Определить местоположение" —
-  // при ручном вводе адреса текстом координат нет, и мы не можем это
-  // посчитать без платного геокодирования).
-  if (
-    fulfillment === "delivery" &&
-    venue?.latitude != null &&
-    venue?.longitude != null &&
-    venue?.delivery_radius_km != null &&
-    customerLat != null &&
-    customerLng != null
-  ) {
-    const distance = distanceKm(venue.latitude, venue.longitude, customerLat, customerLng);
-    if (distance > venue.delivery_radius_km) {
+  // Заведение включило ограничение радиуса (указало координаты через бота
+  // и выбрало км) — тогда точное местоположение гостя обязательно. Раньше
+  // проверка срабатывала только когда customerLat/Lng случайно были в
+  // запросе (гость нажал кнопку геолокации на чекауте) — при обычном ручном
+  // вводе адреса текстом координат не было, и радиус молча не проверялся
+  // вообще. Это тоже подстраховка от прямого POST мимо интерфейса — сам
+  // чекаут теперь тоже требует точку на карте, когда радиус включён.
+  const radiusEnforced =
+    fulfillment === "delivery" && venue?.latitude != null && venue?.longitude != null && venue?.delivery_radius_km != null;
+  if (radiusEnforced) {
+    if (customerLat == null || customerLng == null) {
       return {
-        error: `Вы примерно в ${Math.round(distance)} км от заведения — доставка работает в радиусе ${venue.delivery_radius_km} км. Свяжитесь с заведением напрямую или выберите самовывоз.`,
+        error: "У заведения ограничена зона доставки — укажите точное местоположение кнопкой геолокации или на карте.",
+      };
+    }
+    const distance = distanceKm(venue!.latitude!, venue!.longitude!, customerLat, customerLng);
+    if (distance > venue!.delivery_radius_km!) {
+      return {
+        error: `Вы примерно в ${Math.round(distance)} км от заведения — доставка работает в радиусе ${venue!.delivery_radius_km} км. Свяжитесь с заведением напрямую или выберите самовывоз.`,
       };
     }
   }

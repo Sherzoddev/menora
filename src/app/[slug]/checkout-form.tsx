@@ -7,6 +7,11 @@ import type { MenuTheme } from "@/lib/menu-theme";
 import { LIGHT_THEME } from "@/lib/menu-theme";
 import type { VenueLocation } from "@/lib/geo";
 import { distanceKm } from "@/lib/geo";
+import AddressMapPicker from "./address-map-picker";
+
+// Ташкент — точка по умолчанию для карты, если у гостя нет GPS и заведение
+// ещё не указало координаты (просто стартовый вид, не влияет на расчёт).
+const DEFAULT_MAP_CENTER = { lat: 41.311081, lng: 69.240562 };
 
 export default function CheckoutForm({
   venueId,
@@ -34,6 +39,7 @@ export default function CheckoutForm({
   // Ссылка на точку на карте — отдельно от текста адреса (раньше координаты
   // пихались прямо в поле адреса вместо человекочитаемого текста).
   const [mapLink, setMapLink] = useState<{ provider: "google" | "yandex"; url: string } | null>(null);
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const isDineIn = !!tableNumber;
   // One id per checkout attempt (this form remounts fresh each time the cart
   // sheet opens) — a retry/double-tap within the same attempt reuses it, so
@@ -50,6 +56,13 @@ export default function CheckoutForm({
     distanceFromVenue != null &&
     venueLocation?.radiusKm != null &&
     distanceFromVenue > venueLocation.radiusKm;
+
+  // Заведение ограничило доставку радиусом — раньше проверка срабатывала
+  // только если гость сам нажал кнопку геолокации, а при обычном вводе
+  // адреса текстом координат не было и радиус молча не проверялся вообще.
+  // Теперь, если радиус включён, точное местоположение обязательно.
+  const radiusEnforced = fulfillment === "delivery" && venueLocation?.radiusKm != null;
+  const needsLocation = radiusEnforced && !customerCoords;
 
   const action = createOrder.bind(null, venueId);
   const [state, formAction, pending] = useActionState<
@@ -77,6 +90,29 @@ export default function CheckoutForm({
     { error: null },
   );
 
+  // Общий путь для всех трёх способов получить координаты (GPS-кнопки и
+  // подтверждение на карте): сохраняет координаты, тянет читаемый адрес
+  // через обратное геокодирование и строит ссылку на точку.
+  async function applyCoords(lat: number, lng: number, provider: "google" | "yandex") {
+    setCustomerCoords({ lat, lng });
+    const latStr = lat.toFixed(6);
+    const lngStr = lng.toFixed(6);
+    // Яндекс.Карты принимают координаты в порядке долгота,широта — в
+    // обратном порядке относительно Google Maps.
+    const link =
+      provider === "yandex"
+        ? `https://yandex.ru/maps/?pt=${lngStr},${latStr}&z=17&l=map`
+        : `https://maps.google.com/?q=${latStr},${lngStr}`;
+    setMapLink({ provider, url: link });
+    try {
+      const res = await fetch(`/api/geocode/reverse?lat=${latStr}&lng=${lngStr}`);
+      const data = await res.json();
+      setAddress(data.address || `Координаты: ${latStr}, ${lngStr}`);
+    } catch {
+      setAddress(`Координаты: ${latStr}, ${lngStr}`);
+    }
+  }
+
   function locateMe(provider: "google" | "yandex") {
     if (!navigator.geolocation) {
       setLocationError("Геолокация не поддерживается этим браузером");
@@ -86,26 +122,7 @@ export default function CheckoutForm({
     setLocationError(null);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setCustomerCoords({ lat: latitude, lng: longitude });
-        const lat = latitude.toFixed(6);
-        const lng = longitude.toFixed(6);
-        // Яндекс.Карты принимают координаты в порядке долгота,широта — в
-        // обратном порядке относительно Google Maps.
-        const link =
-          provider === "yandex"
-            ? `https://yandex.ru/maps/?pt=${lng},${lat}&z=17&l=map`
-            : `https://maps.google.com/?q=${lat},${lng}`;
-        setMapLink({ provider, url: link });
-        // Превращаем координаты в читаемый адрес — раньше в поле подставлялись
-        // голые координаты, что бесполезно для курьера и заведения.
-        try {
-          const res = await fetch(`/api/geocode/reverse?lat=${lat}&lng=${lng}`);
-          const data = await res.json();
-          setAddress(data.address || `Координаты: ${lat}, ${lng}`);
-        } catch {
-          setAddress(`Координаты: ${lat}, ${lng}`);
-        }
+        await applyCoords(pos.coords.latitude, pos.coords.longitude, provider);
         setLocating(false);
       },
       () => {
@@ -114,6 +131,11 @@ export default function CheckoutForm({
       },
       { enableHighAccuracy: true, timeout: 10000 },
     );
+  }
+
+  function openMapPicker() {
+    setLocationError(null);
+    setShowMapPicker(true);
   }
 
   return (
@@ -201,6 +223,14 @@ export default function CheckoutForm({
                   📍 Яндекс Карты
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={openMapPicker}
+                className="mt-1.5 w-full rounded-xl border px-2.5 py-1.5 text-xs font-medium"
+                style={{ borderColor: accent, color: accent, background: `${accent}0d` }}
+              >
+                🗺️ Указать точно на карте
+              </button>
               {locating && <p className="mt-1 text-xs" style={{ color: theme.muted }}>Определяем адрес...</p>}
               {mapLink && (
                 <a
@@ -214,6 +244,11 @@ export default function CheckoutForm({
                 </a>
               )}
               {locationError && <p className="mt-1 text-xs text-red-500">{locationError}</p>}
+              {needsLocation && !outOfRadius && (
+                <p className="mt-1 text-xs font-medium" style={{ color: accent }}>
+                  У заведения ограничена зона доставки — укажите точное местоположение кнопкой выше, чтобы оформить заказ.
+                </p>
+              )}
               {outOfRadius && distanceFromVenue != null && venueLocation?.radiusKm != null && (
                 <p className="mt-1 text-xs font-medium text-red-500">
                   Вы примерно в {Math.round(distanceFromVenue)} км от заведения — доставка работает в радиусе{" "}
@@ -242,12 +277,25 @@ export default function CheckoutForm({
 
       <button
         type="submit"
-        disabled={pending || outOfRadius}
+        disabled={pending || outOfRadius || needsLocation}
         className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
         style={{ background: accent }}
       >
         {pending ? "Отправляем..." : "Оформить заказ"}
       </button>
+
+      {showMapPicker && (
+        <AddressMapPicker
+          initial={customerCoords ?? venueLocation ?? DEFAULT_MAP_CENTER}
+          theme={theme}
+          accent={accent}
+          onCancel={() => setShowMapPicker(false)}
+          onConfirm={async (coords) => {
+            setShowMapPicker(false);
+            await applyCoords(coords.lat, coords.lng, "yandex");
+          }}
+        />
+      )}
 
       <style jsx>{`
         .checkout-input {

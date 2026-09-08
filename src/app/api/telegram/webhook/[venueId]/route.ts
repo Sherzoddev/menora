@@ -584,6 +584,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
       } else if (venue.latitude == null || venue.longitude == null) {
         // Гонка: успели нажать кнопку до того, как локация сохранилась.
         toast = rt.needLocationFirst;
+      } else if (parts[1] === "custom") {
+        // Пресеты 10/20/30/40 не всегда подходят — даём ввести любое число
+        // текстом, тем же паттерном, что и bot_pending_price_edits.
+        await admin.from("bot_pending_radius_edit").upsert({ chat_id: chatId, venue_id: venueId });
+        await editTelegramMessage(token, chatId, messageId, rt.customPrompt, emptyMarkup());
       } else {
         const km = Number(parts[1]) || null;
         await admin.from("venues").update({ delivery_radius_km: km }).eq("id", venueId);
@@ -770,6 +775,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
         } else {
           await sendTelegramMessage(token, chatId, pt.updated(dish.name, formatPrice(newPrice, dish.currency)), mainReplyMarkup(siteUrl, staffLang));
         }
+      }
+      return NextResponse.json({ ok: true });
+    }
+  }
+
+  // Server-tracked "waiting for a custom radius number" state (see the
+  // "setradius|custom" callback above) — same TTL/pattern as the price-edit
+  // pending state just above.
+  const { data: pendingRadius } = await admin
+    .from("bot_pending_radius_edit")
+    .select("created_at")
+    .eq("chat_id", chatId)
+    .maybeSingle();
+
+  if (pendingRadius) {
+    await admin.from("bot_pending_radius_edit").delete().eq("chat_id", chatId);
+    const rt = STAFF_TEXT[staffLang].radius;
+
+    if (Date.now() - new Date(pendingRadius.created_at).getTime() > PENDING_PRICE_EDIT_TTL_MS) {
+      // Stale — fall through to normal button handling below.
+    } else {
+      const match = text.replace(",", ".").match(/\d+(\.\d+)?/);
+      const km = match ? Math.round(parseFloat(match[0])) : NaN;
+      if (!Number.isFinite(km) || km <= 0 || km > 300) {
+        await sendTelegramMessage(token, chatId, rt.customInvalid, mainReplyMarkup(siteUrl, staffLang));
+      } else {
+        await admin.from("venues").update({ delivery_radius_km: km }).eq("id", venueId);
+        await sendTelegramMessage(token, chatId, rt.radiusSaved(km), mainReplyMarkup(siteUrl, staffLang));
       }
       return NextResponse.json({ ok: true });
     }

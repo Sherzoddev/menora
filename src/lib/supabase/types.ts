@@ -129,6 +129,39 @@ export type Database = {
           },
         ]
       }
+      bot_pending_radius_edit: {
+        Row: {
+          chat_id: number
+          created_at: string
+          venue_id: string
+        }
+        Insert: {
+          chat_id: number
+          created_at?: string
+          venue_id: string
+        }
+        Update: {
+          chat_id?: number
+          created_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_pending_radius_edit_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venue_stats"
+            referencedColumns: ["venue_id"]
+          },
+          {
+            foreignKeyName: "bot_pending_radius_edit_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bot_pending_venue_location: {
         Row: {
           chat_id: number

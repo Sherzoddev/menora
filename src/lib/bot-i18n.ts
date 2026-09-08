@@ -206,6 +206,9 @@ export const STAFF_TEXT: Record<
       chooseRadius: (currentKm: number | null) => string;
       unlimitedLabel: string;
       relocateButton: string;
+      customButton: string;
+      customPrompt: string;
+      customInvalid: string;
       radiusSaved: (km: number | null) => string;
       needLocationFirst: string;
     };
@@ -285,6 +288,9 @@ export const STAFF_TEXT: Record<
         `📍 Выберите радиус доставки${km != null ? ` (сейчас: ${km} км)` : ""}. Гостям дальше этого расстояния сайт покажет, что доставка недоступна.`,
       unlimitedLabel: "Без ограничений",
       relocateButton: "📍 Обновить локацию заведения",
+      customButton: "✏️ Своё число км",
+      customPrompt: "Введите радиус доставки в км (например: 7 или 12.5) — просто отправьте число сообщением.",
+      customInvalid: "Не похоже на число км. Введите, например: 7",
       radiusSaved: (km) => (km == null ? "✅ Ограничение по радиусу снято." : `✅ Радиус доставки: ${km} км.`),
       needLocationFirst: "Сначала пришлите геолокацию заведения (см. выше).",
     },
@@ -363,6 +369,9 @@ export const STAFF_TEXT: Record<
         `📍 Yetkazish radiusini tanlang${km != null ? ` (hozir: ${km} km)` : ""}. Bu masofadan uzoqroq mehmonlarga sayt yetkazish mavjud emasligini ko'rsatadi.`,
       unlimitedLabel: "Cheklovsiz",
       relocateButton: "📍 Muassasa lokatsiyasini yangilash",
+      customButton: "✏️ O'z raqamingiz (km)",
+      customPrompt: "Yetkazish radiusini km da kiriting (masalan: 7 yoki 12.5) — shunchaki raqam yuboring.",
+      customInvalid: "Bu km soniga o'xshamaydi. Masalan: 7 deb kiriting",
       radiusSaved: (km) => (km == null ? "✅ Radius bo'yicha cheklov olib tashlandi." : `✅ Yetkazish radiusi: ${km} km.`),
       needLocationFirst: "Avval muassasa geolokatsiyasini yuboring (yuqoriga qarang).",
     },
