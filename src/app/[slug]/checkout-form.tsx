@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
-import { createOrder } from "@/lib/orders-actions";
+import { useActionState, useEffect, useMemo, useState } from "react";
+import { createOrder, previewOrderTotals } from "@/lib/orders-actions";
 import { useCart } from "@/lib/cart-context";
 import type { MenuTheme } from "@/lib/menu-theme";
 import { LIGHT_THEME } from "@/lib/menu-theme";
 import type { VenueLocation } from "@/lib/geo";
 import { distanceKm } from "@/lib/geo";
+import { formatPrice } from "@/lib/menu-utils";
 import AddressMapPicker from "./address-map-picker";
 
 // Ташкент — точка по умолчанию для карты, если у гостя нет GPS и заведение
@@ -40,7 +41,18 @@ export default function CheckoutForm({
   // пихались прямо в поле адреса вместо человекочитаемого текста).
   const [mapLink, setMapLink] = useState<{ provider: "google" | "yandex"; url: string } | null>(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [usePoints, setUsePoints] = useState(false);
+  const [totals, setTotals] = useState<{
+    promoDiscount: number;
+    promoError: string | null;
+    pointsAvailable: number;
+    pointsDiscount: number;
+    total: number;
+  } | null>(null);
   const isDineIn = !!tableNumber;
+  const currency = cart.items[0]?.currency ?? "UZS";
   // One id per checkout attempt (this form remounts fresh each time the cart
   // sheet opens) — a retry/double-tap within the same attempt reuses it, so
   // the server can de-dupe instead of creating a second order.
@@ -63,6 +75,21 @@ export default function CheckoutForm({
   // Теперь, если радиус включён, точное местоположение обязательно.
   const radiusEnforced = fulfillment === "delivery" && venueLocation?.radiusKm != null;
   const needsLocation = radiusEnforced && !customerCoords;
+
+  // Живой предпросмотр итоговой суммы (как в Яндексе) — раньше на чекауте
+  // вообще не было видно ни суммы товаров, ни того, что изменилось после
+  // промокода/баллов, только в самой корзине до открытия формы.
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const result = await previewOrderTotals(venueId, { subtotal: cart.total, promoCode, phone, usePoints });
+      if (!cancelled) setTotals(result);
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [venueId, cart.total, promoCode, phone, usePoints]);
 
   const action = createOrder.bind(null, venueId);
   const [state, formAction, pending] = useActionState<
@@ -144,7 +171,14 @@ export default function CheckoutForm({
         <input name="customer_name" required className="checkout-input" placeholder="Иван" />
       </Field>
       <Field label="Телефон" theme={theme}>
-        <input name="phone" required className="checkout-input" placeholder="+998 90 123 45 67" />
+        <input
+          name="phone"
+          required
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          className="checkout-input"
+          placeholder="+998 90 123 45 67"
+        />
       </Field>
 
       {isDineIn ? (
@@ -261,17 +295,59 @@ export default function CheckoutForm({
       )}
 
       <Field label="Промокод (необязательно)" theme={theme}>
-        <input name="promo_code" className="checkout-input" placeholder="Например, WELCOME10" />
+        <input
+          name="promo_code"
+          value={promoCode}
+          onChange={(e) => setPromoCode(e.target.value)}
+          className="checkout-input"
+          placeholder="Например, WELCOME10"
+        />
+        {totals?.promoError && promoCode.trim() && (
+          <p className="mt-1 text-xs text-red-500">{totals.promoError}</p>
+        )}
       </Field>
 
       <label className="flex items-center gap-2 text-xs" style={{ color: theme.muted }}>
-        <input type="checkbox" name="use_points" />
-        Списать бонусные баллы (если есть на этот номер телефона)
+        <input type="checkbox" name="use_points" checked={usePoints} onChange={(e) => setUsePoints(e.target.checked)} />
+        Списать бонусные баллы
+        {totals && totals.pointsAvailable > 0 ? ` (доступно: ${totals.pointsAvailable})` : " (если есть на этот номер телефона)"}
       </label>
 
       <Field label="Комментарий (необязательно)" theme={theme}>
         <textarea name="comment" rows={2} className="checkout-input" />
       </Field>
+
+      <div className="rounded-xl border px-3.5 py-3 text-sm" style={{ borderColor: theme.border }}>
+        <div className="flex items-center justify-between" style={{ color: theme.muted }}>
+          <span>Товары</span>
+          <span>{formatPrice(cart.total, currency)}</span>
+        </div>
+        {!!totals?.promoDiscount && (
+          <div className="mt-1 flex items-center justify-between text-red-500">
+            <span>Промокод</span>
+            <span>−{formatPrice(totals.promoDiscount, currency)}</span>
+          </div>
+        )}
+        {!!totals?.pointsDiscount && (
+          <div className="mt-1 flex items-center justify-between text-red-500">
+            <span>Баллы</span>
+            <span>−{formatPrice(totals.pointsDiscount, currency)}</span>
+          </div>
+        )}
+        <div className="mt-2 flex items-center justify-between border-t pt-2 text-base font-semibold" style={{ borderColor: theme.border, color: theme.text }}>
+          <span>Итого</span>
+          {totals && (totals.promoDiscount > 0 || totals.pointsDiscount > 0) ? (
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-xs font-normal line-through" style={{ color: theme.mutedLight }}>
+                {formatPrice(cart.total, currency)}
+              </span>
+              <span>{formatPrice(totals.total, currency)}</span>
+            </span>
+          ) : (
+            <span>{formatPrice(cart.total, currency)}</span>
+          )}
+        </div>
+      </div>
 
       {state.error && <p className="text-sm text-red-500">{state.error}</p>}
 

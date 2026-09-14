@@ -14,6 +14,71 @@ import { notifyStaff } from "@/lib/venue-staff";
 import { advanceOrderStatus, sendOrderTracker } from "@/lib/order-status";
 import { distanceKm } from "@/lib/geo";
 
+// Промокоды и баллы лояльности живут в таблицах без публичной RLS-policy
+// (см. createOrder ниже), поэтому гость не может посчитать скидку сам — эта
+// функция даёт живой предпросмотр итоговой суммы на чекауте, ещё до сабмита.
+// Формулы (percent/fixed, округление, POINT_VALUE) намеренно продублированы
+// из createOrder, а не вынесены в общий хелпер — createOrder уже в проде и
+// трогать его логику ради рефакторинга рискованнее, чем поддерживать две
+// небольшие копии в актуальном состоянии.
+export async function previewOrderTotals(
+  venueId: string,
+  input: { subtotal: number; promoCode: string; phone: string; usePoints: boolean },
+): Promise<{
+  subtotal: number;
+  promoDiscount: number;
+  promoError: string | null;
+  pointsAvailable: number;
+  pointsDiscount: number;
+  total: number;
+}> {
+  const subtotal = Math.max(0, input.subtotal);
+  const promoInput = input.promoCode.trim();
+  const phone = input.phone.trim();
+  const adminDb = createAdminClient();
+
+  let promoDiscount = 0;
+  let promoError: string | null = null;
+  if (promoInput) {
+    const { data: promo } = await adminDb
+      .from("promo_codes")
+      .select("discount_type, discount_value, max_uses, used_count, is_active")
+      .eq("venue_id", venueId)
+      .eq("code", promoInput.toUpperCase())
+      .maybeSingle();
+    if (!promo || !promo.is_active || (promo.max_uses != null && promo.used_count >= promo.max_uses)) {
+      promoError = "Промокод недействителен или больше не активен";
+    } else {
+      promoDiscount =
+        promo.discount_type === "percent"
+          ? Math.round((subtotal * promo.discount_value) / 100)
+          : Math.round(promo.discount_value);
+      promoDiscount = Math.min(promoDiscount, subtotal);
+    }
+  }
+
+  let pointsAvailable = 0;
+  let pointsDiscount = 0;
+  if (phone) {
+    const { data: loyaltyRow } = await adminDb
+      .from("loyalty_points")
+      .select("points")
+      .eq("venue_id", venueId)
+      .eq("phone", phone)
+      .maybeSingle();
+    pointsAvailable = loyaltyRow?.points ?? 0;
+    if (input.usePoints && pointsAvailable > 0) {
+      const afterPromo = subtotal - promoDiscount;
+      const maxRedeemablePoints = Math.floor(afterPromo / POINT_VALUE);
+      const pointsRedeemed = Math.min(pointsAvailable, maxRedeemablePoints);
+      pointsDiscount = pointsRedeemed * POINT_VALUE;
+    }
+  }
+
+  const total = Math.max(0, subtotal - promoDiscount - pointsDiscount);
+  return { subtotal, promoDiscount, promoError, pointsAvailable, pointsDiscount, total };
+}
+
 export type CheckoutItem = {
   dishId: string;
   name: string;
