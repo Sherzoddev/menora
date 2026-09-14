@@ -1,55 +1,74 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Обратное геокодирование (координаты -> человекочитаемый адрес) для точки,
-// выбранной на карте на чекауте — без него в поле адреса были бы голые
-// координаты, бесполезные для курьера. Nominatim (OpenStreetMap): бесплатный,
-// без API-ключа — единственный вариант без привязки к платному мерчанту/ключу
-// на каждое заведение (в проекте пока нигде такого нет).
-// Идём через свой роут, а не бьём Nominatim прямо из браузера: их usage policy
-// требует User-Agent с указанием приложения, а браузерный fetch такой
-// заголовок переопределить не даёт.
+// выбранной на карте на чекауте — только для подписи в поле адреса. Маркер
+// на карте всегда остаётся ровно там, куда его поставил гость: координаты,
+// которые уходят на сервер для проверки радиуса и курьеру, берутся из
+// клика/драга на карте (address-map-picker.tsx), а не из ответа Nominatim —
+// этот роут им не возвращается вовсе.
+//
+// Nominatim reverse ищет не "точный адрес этой точки", а ближайший подходящий
+// объект OSM, поэтому там, где адреса размечены неполно (частая ситуация для
+// Узбекистана), он может привязаться к соседнему дому/улице. layer=address
+// хотя бы исключает попадание в ближайший магазин/кафе вместо адреса.
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse";
 const REQUEST_TIMEOUT_MS = 6000;
 
 export async function GET(req: NextRequest) {
-  const lat = req.nextUrl.searchParams.get("lat");
-  const lng = req.nextUrl.searchParams.get("lng");
-  if (!lat || !lng) {
-    return NextResponse.json({ error: "lat/lng required" }, { status: 400 });
+  const lat = Number(req.nextUrl.searchParams.get("lat"));
+  const lng = Number(req.nextUrl.searchParams.get("lng"));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return NextResponse.json({ error: "invalid coordinates" }, { status: 400 });
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const url = `${NOMINATIM_URL}?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=ru&zoom=18`;
-    const res = await fetch(url, {
+    const params = new URLSearchParams({
+      format: "jsonv2",
+      lat: String(lat),
+      lon: String(lng),
+      zoom: "18",
+      addressdetails: "1",
+      layer: "address",
+      "accept-language": "ru,uz,en",
+    });
+    const res = await fetch(`${NOMINATIM_URL}?${params}`, {
       headers: { "User-Agent": "MenoraQRMenu/1.0 (QR-menu SaaS for restaurants)" },
       signal: controller.signal,
+      // Одна и та же точка (гость двигает пин туда-сюда, отменяет и снова
+      // открывает карту) не должна каждый раз бить по публичному Nominatim —
+      // у него жёсткий лимит ~1 запрос/сек на всё приложение.
+      next: { revalidate: 86400 },
     });
     if (!res.ok) return NextResponse.json({ address: null });
 
     const data = await res.json();
     const a = data.address ?? {};
-    // Многие точки в Узбекистане в OSM не привязаны к конкретной улице
-    // (road/pedestrian) — тогда раньше в адрес попадал только город. Теперь
-    // добавлены neighbourhood/suburb/quarter (обычно это махалля, которая и
-    // есть "точный адрес" для таких мест), плюс house_number если он есть.
-    const street = a.road || a.pedestrian || a.footway || a.residential || a.neighbourhood || a.suburb || a.quarter || "";
-    const house = a.house_number ? ` ${a.house_number}` : "";
-    const area = a.city || a.town || a.village || a.county || "";
 
-    let address: string | null;
-    if (street) {
-      address = area && area !== street ? `${street}${house}, ${area}` : `${street}${house}`;
-    } else {
-      // Даже махалли нет в разметке — берём несколько первых сегментов
-      // display_name (Nominatim строит его от самого точного к общему),
-      // это всё ещё точнее голого названия города.
+    // Раньше улица и махалля/район смешивались в одну переменную — из-за
+    // этого, например, "Chilonzor-7" (neighbourhood) выводился так, будто
+    // это название улицы. Разделяем на явные роли.
+    const road = a.road || a.pedestrian || a.residential || a.footway || "";
+    const house = a.house_number || "";
+    const neighbourhood = a.neighbourhood || a.quarter || a.suburb || a.city_district || "";
+    const city = a.city || a.town || a.village || a.municipality || a.county || "";
+
+    const parts: string[] = [];
+    if (road) parts.push(house ? `${road}, ${house}` : road);
+    else if (neighbourhood) parts.push(neighbourhood);
+    if (city && city !== neighbourhood) parts.push(city);
+
+    let address: string | null = parts.length ? parts.join(", ") : null;
+    if (!address) {
+      // Совсем ничего адресного не нашлось — берём первые сегменты
+      // display_name (Nominatim строит его от точного к общему), это всё
+      // ещё лучше, чем просто отказаться от подписи.
       const segments = String(data.display_name ?? "")
         .split(",")
         .map((s: string) => s.trim())
         .filter(Boolean);
-      address = segments.length ? segments.slice(0, 3).join(", ") : area || null;
+      address = segments.length ? segments.slice(0, 4).join(", ") : null;
     }
     return NextResponse.json({ address });
   } catch {
