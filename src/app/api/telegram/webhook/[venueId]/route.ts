@@ -236,6 +236,16 @@ function formatOrderText(o: OrderRow, header: string, lang: BotLang) {
   );
 }
 
+function truncateAddress(address: string, max = 32): string {
+  return address.length > max ? `${address.slice(0, max - 1)}…` : address;
+}
+
+// Список активных доставок — раньше показывался только самый старый заказ
+// ("…ещё N в очереди — отметьте этот, чтобы увидеть следующий"), потом
+// (по ошибке) все сразу одним полотном текста с одинаковыми на вид кнопками
+// "Начать готовить" — непонятно, какая кнопка к какому заказу. Теперь это
+// меню: одна кнопка на заказ с номером и адресом, тап открывает карточку
+// конкретного заказа (см. renderDeliveryOrder) с деталями и маршрутом.
 async function renderDelivery(
   admin: ReturnType<typeof createAdminClient>,
   venueId: string,
@@ -253,28 +263,56 @@ async function renderDelivery(
   if (!orders?.length) {
     return { text: t.delivery.noOrders, markup: emptyMarkup() };
   }
-  // Раньше показывался только самый старый заказ ("…ещё N в очереди —
-  // отметьте этот, чтобы увидеть следующий"), и курьеру приходилось
-  // разбирать доставки по одной. Теперь, как и в renderTable для столов,
-  // показываем все активные доставки сразу, каждую со своей кнопкой этапа
-  // и своим маршрутом — курьер видит весь список адресов за один раз.
   const rows = orders as unknown as OrderRow[];
-  const blocks = rows.map((o, i) => formatOrderText(o, `${i + 1}) ${formatTime(o.created_at)}`, lang));
+  const stagesT = STAFF_TEXT[lang].stages as unknown as Record<string, string>;
+  const summaryLines = rows.map(
+    (o, i) => `${i + 1}) ${formatTime(o.created_at)} · ${o.customer_name} · ${formatPrice(o.total, "UZS")} · ${stagesT[o.status] ?? ""}`,
+  );
 
   return {
-    text: `${t.delivery.header(rows.length)}\n\n${blocks.join("\n\n")}`,
+    text: `${t.delivery.header(rows.length)}\n\n${summaryLines.join("\n")}`,
     markup: {
       inline_keyboard: [
-        ...rows.flatMap((o) => {
-          const next = stageButtonFor(o.status, lang);
-          const orderRows: { text: string; callback_data?: string; url?: string }[][] = [];
-          if (next) orderRows.push([{ text: next.label, callback_data: `stage|${o.id}|${next.nextStatus}|delivery` }]);
-          if (o.address) orderRows.push(deliveryRouteRow(o.address, lang));
-          return orderRows;
-        }),
+        ...rows.map((o, i) => [
+          {
+            text: `${i + 1}) ${o.address ? truncateAddress(o.address) : o.customer_name}`,
+            callback_data: `deliveryorder|${o.id}`,
+          },
+        ]),
         [{ text: t.tables.backButton, callback_data: "close" }],
       ],
     },
+  };
+}
+
+// Карточка одного заказа — открывается тапом по строке в списке выше.
+async function renderDeliveryOrder(
+  admin: ReturnType<typeof createAdminClient>,
+  venueId: string,
+  orderId: string,
+  lang: BotLang,
+): Promise<{ text: string; markup: TgMarkup }> {
+  const t = STAFF_TEXT[lang];
+  const { data: order } = await admin
+    .from("orders")
+    .select("id, status, customer_name, phone, address, comment, total, created_at, order_items(dish_name, price, quantity)")
+    .eq("id", orderId)
+    .eq("venue_id", venueId)
+    .maybeSingle();
+
+  if (!order) {
+    return { text: t.delivery.noOrders, markup: backOnlyMarkup("delivery", lang) };
+  }
+  const o = order as unknown as OrderRow;
+  const next = stageButtonFor(o.status, lang);
+  const rows: { text: string; callback_data?: string; url?: string }[][] = [];
+  if (next) rows.push([{ text: next.label, callback_data: `stage|${o.id}|${next.nextStatus}|deliveryorder|${o.id}` }]);
+  if (o.address) rows.push(deliveryRouteRow(o.address, lang));
+  rows.push([{ text: t.tables.backButton, callback_data: "delivery" }]);
+
+  return {
+    text: formatOrderText(o, t.labels.delivery, lang),
+    markup: { inline_keyboard: rows },
   };
 }
 
@@ -406,6 +444,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
     } else if (action === "table") {
       const view = await renderTable(admin, venueId, parts[1], staffLang);
       await editTelegramMessage(token, chatId, messageId, view.text, view.markup);
+    } else if (action === "delivery") {
+      const view = await renderDelivery(admin, venueId, staffLang);
+      await editTelegramMessage(token, chatId, messageId, view.text, view.markup);
+    } else if (action === "deliveryorder") {
+      const view = await renderDeliveryOrder(admin, venueId, parts[1], staffLang);
+      await editTelegramMessage(token, chatId, messageId, view.text, view.markup);
     } else if (action === "stage") {
       // Один шаг цепочки за раз: принят -> готовится -> готов -> отправлен.
       // orderActionsMarkup/stageButtonFor уже гарантируют, что newStatus —
@@ -421,6 +465,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
 
       if (context === "delivery") {
         const view = await renderDelivery(admin, venueId, staffLang);
+        await editTelegramMessage(token, chatId, messageId, view.text, view.markup);
+      } else if (context.startsWith("deliveryorder|")) {
+        const view = await renderDeliveryOrder(admin, venueId, context.split("|")[1], staffLang);
         await editTelegramMessage(token, chatId, messageId, view.text, view.markup);
       } else if (context.startsWith("table|")) {
         const view = await renderTable(admin, venueId, context.split("|")[1], staffLang);

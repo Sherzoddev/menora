@@ -30,11 +30,28 @@ export async function GET(req: NextRequest) {
 
     const data = await res.json();
     const a = data.address ?? {};
-    const street = a.road || a.pedestrian || a.footway || a.residential || "";
+    // Многие точки в Узбекистане в OSM не привязаны к конкретной улице
+    // (road/pedestrian) — тогда раньше в адрес попадал только город, что и
+    // было багом ("пишет только город"). neighbourhood/suburb/quarter — это
+    // обычно махалля, которая как раз и есть тот самый "точный адрес" для
+    // таких мест, плюс house_number если он всё-таки есть.
+    const street = a.road || a.pedestrian || a.footway || a.residential || a.neighbourhood || a.suburb || a.quarter || "";
     const house = a.house_number ? ` ${a.house_number}` : "";
     const area = a.city || a.town || a.village || a.county || "";
-    const parts = [street ? `${street}${house}` : "", area].filter(Boolean);
-    const address = parts.length ? parts.join(", ") : (data.display_name ?? null);
+
+    let address: string | null;
+    if (street) {
+      address = area && area !== street ? `${street}${house}, ${area}` : `${street}${house}`;
+    } else {
+      // Даже махалли нет в разметке — берём несколько первых сегментов
+      // display_name (Nominatim строит его от самого точного к общему),
+      // это всё ещё точнее голого названия города.
+      const segments = String(data.display_name ?? "")
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      address = segments.length ? segments.slice(0, 3).join(", ") : area || null;
+    }
     return NextResponse.json({ address });
   } catch {
     // Nominatim недоступен/не ответил вовремя — не роняем чекаут, просто
