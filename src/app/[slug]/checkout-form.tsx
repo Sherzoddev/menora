@@ -35,10 +35,6 @@ export default function CheckoutForm({
   // Известны только после того, как гость подтвердил точку на карте — при
   // ручном вводе адреса текстом координат нет, и проверить радиус нечем.
   const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null);
-  // Ссылки на выбранную точку — показываем оба варианта карт сразу, раз
-  // теперь это единственный способ указать место (было по кнопке на каждую
-  // карту отдельно с автогеолокацией, но она давала неточный/неверный адрес).
-  const [mapLinks, setMapLinks] = useState<{ google: string; yandex: string } | null>(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [phone, setPhone] = useState("");
@@ -134,12 +130,6 @@ export default function CheckoutForm({
     } finally {
       setGeocoding(false);
     }
-    setMapLinks({
-      google: `https://maps.google.com/?q=${latStr},${lngStr}`,
-      // Яндекс.Карты принимают координаты в порядке долгота,широта — в
-      // обратном порядке относительно Google Maps.
-      yandex: `https://yandex.ru/maps/?pt=${lngStr},${latStr}&z=17&l=map`,
-    });
   }
 
   return (
@@ -209,7 +199,6 @@ export default function CheckoutForm({
                   // Адрес поменяли руками после выбора точки на карте —
                   // координаты больше не гарантированно соответствуют ему.
                   setCustomerCoords(null);
-                  setMapLinks(null);
                 }}
                 className="checkout-input"
                 placeholder="Нажмите «Указать на карте» ниже"
@@ -223,16 +212,6 @@ export default function CheckoutForm({
                 🗺️ Указать точно на карте
               </button>
               {geocoding && <p className="mt-1 text-xs" style={{ color: theme.muted }}>Определяем адрес...</p>}
-              {mapLinks && (
-                <div className="mt-1 flex gap-3">
-                  <a href={mapLinks.google} target="_blank" rel="noopener noreferrer" className="text-xs underline" style={{ color: accent }}>
-                    📍 Открыть в Google Картах
-                  </a>
-                  <a href={mapLinks.yandex} target="_blank" rel="noopener noreferrer" className="text-xs underline" style={{ color: accent }}>
-                    📍 Открыть в Яндекс Картах
-                  </a>
-                </div>
-              )}
               {needsLocation && !outOfRadius && (
                 <p className="mt-1 text-xs font-medium" style={{ color: accent }}>
                   У заведения ограничена зона доставки — укажите точку на карте выше, чтобы оформить заказ.

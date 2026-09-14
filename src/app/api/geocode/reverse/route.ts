@@ -51,13 +51,18 @@ export async function GET(req: NextRequest) {
     // это название улицы. Разделяем на явные роли.
     const road = a.road || a.pedestrian || a.residential || a.footway || "";
     const house = a.house_number || "";
-    const neighbourhood = a.neighbourhood || a.quarter || a.suburb || a.city_district || "";
-    const city = a.city || a.town || a.village || a.municipality || a.county || "";
+    const neighbourhood = a.neighbourhood || a.quarter || a.suburb || a.city_district || a.hamlet || "";
+    // Настоящий населённый пункт — отдельно от admin-единиц вроде county/state
+    // (то, что называется "...ский район"/"...ская область"). Раньше county
+    // попадал в тот же fallback, что и город, и если рядом не было ни улицы,
+    // ни города — адрес превращался в голое название района ("Паст
+    // Даргамский район"), что бесполезно для доставки.
+    const settlement = a.city || a.town || a.village || a.municipality || "";
 
     const parts: string[] = [];
     if (road) parts.push(house ? `${road}, ${house}` : road);
     else if (neighbourhood) parts.push(neighbourhood);
-    if (city && city !== neighbourhood) parts.push(city);
+    if (settlement && settlement !== neighbourhood) parts.push(settlement);
 
     let address: string | null = parts.length ? parts.join(", ") : null;
     if (!address) {
