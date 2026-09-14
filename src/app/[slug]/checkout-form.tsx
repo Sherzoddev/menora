@@ -168,7 +168,7 @@ export default function CheckoutForm({
   return (
     <form action={formAction} className="space-y-3">
       <Field label="Ваше имя" theme={theme}>
-        <input name="customer_name" required className="checkout-input" placeholder="Иван" />
+        <input name="customer_name" required className="checkout-input" placeholder="Шерзод" />
       </Field>
       <Field label="Телефон" theme={theme}>
         <input
