@@ -306,7 +306,10 @@ async function renderDeliveryOrder(
   const o = order as unknown as OrderRow;
   const next = stageButtonFor(o.status, lang);
   const rows: { text: string; callback_data?: string; url?: string }[][] = [];
-  if (next) rows.push([{ text: next.label, callback_data: `stage|${o.id}|${next.nextStatus}|deliveryorder|${o.id}` }]);
+  // "do" (не полный "deliveryorder|<id>") — Telegram обрезает/отклоняет
+  // callback_data длиннее 64 байт, а тут и так уже есть orderId в parts[1],
+  // дублировать его в context незачем.
+  if (next) rows.push([{ text: next.label, callback_data: `stage|${o.id}|${next.nextStatus}|do` }]);
   if (o.address) rows.push(deliveryRouteRow(o.address, lang));
   rows.push([{ text: t.tables.backButton, callback_data: "delivery" }]);
 
@@ -466,8 +469,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
       if (context === "delivery") {
         const view = await renderDelivery(admin, venueId, staffLang);
         await editTelegramMessage(token, chatId, messageId, view.text, view.markup);
-      } else if (context.startsWith("deliveryorder|")) {
-        const view = await renderDeliveryOrder(admin, venueId, context.split("|")[1], staffLang);
+      } else if (context === "do") {
+        const view = await renderDeliveryOrder(admin, venueId, orderId, staffLang);
         await editTelegramMessage(token, chatId, messageId, view.text, view.markup);
       } else if (context.startsWith("table|")) {
         const view = await renderTable(admin, venueId, context.split("|")[1], staffLang);

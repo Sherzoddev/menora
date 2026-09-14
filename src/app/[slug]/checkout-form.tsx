@@ -32,15 +32,15 @@ export default function CheckoutForm({
   const cart = useCart();
   const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">("delivery");
   const [address, setAddress] = useState("");
-  const [locating, setLocating] = useState(false);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  // Известны только если гость сам нажал "Определить местоположение" — при
+  // Известны только после того, как гость подтвердил точку на карте — при
   // ручном вводе адреса текстом координат нет, и проверить радиус нечем.
   const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null);
-  // Ссылка на точку на карте — отдельно от текста адреса (раньше координаты
-  // пихались прямо в поле адреса вместо человекочитаемого текста).
-  const [mapLink, setMapLink] = useState<{ provider: "google" | "yandex"; url: string } | null>(null);
+  // Ссылки на выбранную точку — показываем оба варианта карт сразу, раз
+  // теперь это единственный способ указать место (было по кнопке на каждую
+  // карту отдельно с автогеолокацией, но она давала неточный/неверный адрес).
+  const [mapLinks, setMapLinks] = useState<{ google: string; yandex: string } | null>(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
   const [phone, setPhone] = useState("");
   const [promoCode, setPromoCode] = useState("");
   const [usePoints, setUsePoints] = useState(false);
@@ -117,52 +117,29 @@ export default function CheckoutForm({
     { error: null },
   );
 
-  // Общий путь для всех трёх способов получить координаты (GPS-кнопки и
-  // подтверждение на карте): сохраняет координаты, тянет читаемый адрес
-  // через обратное геокодирование и строит ссылку на точку.
-  async function applyCoords(lat: number, lng: number, provider: "google" | "yandex") {
+  // Единственный источник координат теперь — точка, выбранная на карте.
+  // Превращаем координаты в читаемый адрес через обратное геокодирование;
+  // голые координаты в поле остаются только если сервис не ответил.
+  async function applyCoords(lat: number, lng: number) {
     setCustomerCoords({ lat, lng });
     const latStr = lat.toFixed(6);
     const lngStr = lng.toFixed(6);
-    // Яндекс.Карты принимают координаты в порядке долгота,широта — в
-    // обратном порядке относительно Google Maps.
-    const link =
-      provider === "yandex"
-        ? `https://yandex.ru/maps/?pt=${lngStr},${latStr}&z=17&l=map`
-        : `https://maps.google.com/?q=${latStr},${lngStr}`;
-    setMapLink({ provider, url: link });
+    setGeocoding(true);
     try {
       const res = await fetch(`/api/geocode/reverse?lat=${latStr}&lng=${lngStr}`);
       const data = await res.json();
-      setAddress(data.address || `Координаты: ${latStr}, ${lngStr}`);
+      setAddress(data.address || `${latStr}, ${lngStr}`);
     } catch {
-      setAddress(`Координаты: ${latStr}, ${lngStr}`);
+      setAddress(`${latStr}, ${lngStr}`);
+    } finally {
+      setGeocoding(false);
     }
-  }
-
-  function locateMe(provider: "google" | "yandex") {
-    if (!navigator.geolocation) {
-      setLocationError("Геолокация не поддерживается этим браузером");
-      return;
-    }
-    setLocating(true);
-    setLocationError(null);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        await applyCoords(pos.coords.latitude, pos.coords.longitude, provider);
-        setLocating(false);
-      },
-      () => {
-        setLocationError("Не удалось определить местоположение — введите адрес вручную");
-        setLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000 },
-    );
-  }
-
-  function openMapPicker() {
-    setLocationError(null);
-    setShowMapPicker(true);
+    setMapLinks({
+      google: `https://maps.google.com/?q=${latStr},${lngStr}`,
+      // Яндекс.Карты принимают координаты в порядке долгота,широта — в
+      // обратном порядке относительно Google Maps.
+      yandex: `https://yandex.ru/maps/?pt=${lngStr},${latStr}&z=17&l=map`,
+    });
   }
 
   return (
@@ -229,58 +206,36 @@ export default function CheckoutForm({
                 value={address}
                 onChange={(e) => {
                   setAddress(e.target.value);
-                  // Адрес поменяли руками после определения местоположения —
+                  // Адрес поменяли руками после выбора точки на карте —
                   // координаты больше не гарантированно соответствуют ему.
                   setCustomerCoords(null);
-                  setMapLink(null);
+                  setMapLinks(null);
                 }}
                 className="checkout-input"
-                placeholder="Улица, дом, квартира"
+                placeholder="Нажмите «Указать на карте» ниже"
               />
-              <div className="mt-1.5 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => locateMe("google")}
-                  disabled={locating}
-                  className="flex-1 rounded-xl border px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
-                  style={{ borderColor: accent, color: accent }}
-                >
-                  📍 Google Карты
-                </button>
-                <button
-                  type="button"
-                  onClick={() => locateMe("yandex")}
-                  disabled={locating}
-                  className="flex-1 rounded-xl border px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
-                  style={{ borderColor: accent, color: accent }}
-                >
-                  📍 Яндекс Карты
-                </button>
-              </div>
               <button
                 type="button"
-                onClick={openMapPicker}
+                onClick={() => setShowMapPicker(true)}
                 className="mt-1.5 w-full rounded-xl border px-2.5 py-1.5 text-xs font-medium"
                 style={{ borderColor: accent, color: accent, background: `${accent}0d` }}
               >
                 🗺️ Указать точно на карте
               </button>
-              {locating && <p className="mt-1 text-xs" style={{ color: theme.muted }}>Определяем адрес...</p>}
-              {mapLink && (
-                <a
-                  href={mapLink.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 inline-block text-xs underline"
-                  style={{ color: accent }}
-                >
-                  📍 Открыть точку на {mapLink.provider === "yandex" ? "Яндекс Картах" : "Google Картах"}
-                </a>
+              {geocoding && <p className="mt-1 text-xs" style={{ color: theme.muted }}>Определяем адрес...</p>}
+              {mapLinks && (
+                <div className="mt-1 flex gap-3">
+                  <a href={mapLinks.google} target="_blank" rel="noopener noreferrer" className="text-xs underline" style={{ color: accent }}>
+                    📍 Открыть в Google Картах
+                  </a>
+                  <a href={mapLinks.yandex} target="_blank" rel="noopener noreferrer" className="text-xs underline" style={{ color: accent }}>
+                    📍 Открыть в Яндекс Картах
+                  </a>
+                </div>
               )}
-              {locationError && <p className="mt-1 text-xs text-red-500">{locationError}</p>}
               {needsLocation && !outOfRadius && (
                 <p className="mt-1 text-xs font-medium" style={{ color: accent }}>
-                  У заведения ограничена зона доставки — укажите точное местоположение кнопкой выше, чтобы оформить заказ.
+                  У заведения ограничена зона доставки — укажите точку на карте выше, чтобы оформить заказ.
                 </p>
               )}
               {outOfRadius && distanceFromVenue != null && venueLocation?.radiusKm != null && (
@@ -368,7 +323,7 @@ export default function CheckoutForm({
           onCancel={() => setShowMapPicker(false)}
           onConfirm={async (coords) => {
             setShowMapPicker(false);
-            await applyCoords(coords.lat, coords.lng, "yandex");
+            await applyCoords(coords.lat, coords.lng);
           }}
         />
       )}
