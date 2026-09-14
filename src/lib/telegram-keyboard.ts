@@ -64,11 +64,31 @@ export function stageButtonFor(
   return null;
 }
 
-export function orderActionsMarkup(orderId: string, status: string, context: string, lang: BotLang): TgMarkup {
+// Курьеру нужен не просто текст адреса, а рабочий маршрут одним тапом.
+// Координат гостя мы не храним (см. checkout-form.tsx — они нужны только
+// для проверки радиуса и никуда дальше не сохраняются), поэтому строим
+// ссылку прямо по тексту адреса — оба сервиса резолвят обычный адрес как
+// пункт назначения, и обе карты сами берут текущее место курьера как старт.
+export function deliveryRouteRow(address: string, lang: BotLang): { text: string; url: string }[] {
+  const t = STAFF_TEXT[lang].order;
+  return [
+    { text: t.routeGoogle, url: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}` },
+    { text: t.routeYandex, url: `https://yandex.ru/maps/?rtext=~${encodeURIComponent(address)}&rtt=auto` },
+  ];
+}
+
+export function orderActionsMarkup(
+  orderId: string,
+  status: string,
+  context: string,
+  lang: BotLang,
+  address?: string | null,
+): TgMarkup {
   const backTarget = context.startsWith("table|") ? "tables" : "close";
   const next = stageButtonFor(status, lang);
-  const rows: { text: string; callback_data: string }[][] = [];
+  const rows: { text: string; callback_data?: string; url?: string }[][] = [];
   if (next) rows.push([{ text: next.label, callback_data: `stage|${orderId}|${next.nextStatus}|${context}` }]);
+  if (address) rows.push(deliveryRouteRow(address, lang));
   rows.push([{ text: STAFF_TEXT[lang].tables.backButton, callback_data: backTarget }]);
   return { inline_keyboard: rows };
 }

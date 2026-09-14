@@ -21,6 +21,7 @@ import {
   priceDishesMarkup,
   stageButtonFor,
   radiusPickerMarkup,
+  deliveryRouteRow,
 } from "@/lib/telegram-keyboard";
 import { formatPrice, formatTime } from "@/lib/menu-utils";
 import { fetchStaffChatIds, notifyStaff } from "@/lib/venue-staff";
@@ -221,7 +222,7 @@ type OrderRow = {
   order_items: { dish_name: string; price: number; quantity: number }[];
 };
 
-function formatOrderText(o: OrderRow, header: string, extraCount: number, lang: BotLang) {
+function formatOrderText(o: OrderRow, header: string, lang: BotLang) {
   const t = STAFF_TEXT[lang].order;
   const stageLabel = (STAFF_TEXT[lang].stages as unknown as Record<string, string>)[o.status] ?? "";
   const lines = o.order_items.map(
@@ -231,8 +232,7 @@ function formatOrderText(o: OrderRow, header: string, extraCount: number, lang: 
     `${header} · ${stageLabel}\n🕐 ${t.orderedAt} ${formatTime(o.created_at)}\n\n${lines.join("\n")}\n\n${t.total}: <b>${formatPrice(o.total, "UZS")}</b>\n` +
     `${t.name}: ${o.customer_name}\n${t.phone}: ${o.phone}` +
     (o.address ? `\n${t.address}: ${o.address}` : "") +
-    (o.comment ? `\n${t.comment}: ${o.comment}` : "") +
-    (extraCount > 0 ? t.queueNote(extraCount) : "")
+    (o.comment ? `\n${t.comment}: ${o.comment}` : "")
   );
 }
 
@@ -253,13 +253,25 @@ async function renderDelivery(
   if (!orders?.length) {
     return { text: t.delivery.noOrders, markup: emptyMarkup() };
   }
-  const o = orders[0] as unknown as OrderRow;
-  const next = stageButtonFor(o.status, lang);
+  // Раньше показывался только самый старый заказ ("…ещё N в очереди —
+  // отметьте этот, чтобы увидеть следующий"), и курьеру приходилось
+  // разбирать доставки по одной. Теперь, как и в renderTable для столов,
+  // показываем все активные доставки сразу, каждую со своей кнопкой этапа
+  // и своим маршрутом — курьер видит весь список адресов за один раз.
+  const rows = orders as unknown as OrderRow[];
+  const blocks = rows.map((o, i) => formatOrderText(o, `${i + 1}) ${formatTime(o.created_at)}`, lang));
+
   return {
-    text: formatOrderText(o, t.delivery.header(orders.length), orders.length - 1, lang),
+    text: `${t.delivery.header(rows.length)}\n\n${blocks.join("\n\n")}`,
     markup: {
       inline_keyboard: [
-        ...(next ? [[{ text: next.label, callback_data: `stage|${o.id}|${next.nextStatus}|delivery` }]] : []),
+        ...rows.flatMap((o) => {
+          const next = stageButtonFor(o.status, lang);
+          const orderRows: { text: string; callback_data?: string; url?: string }[][] = [];
+          if (next) orderRows.push([{ text: next.label, callback_data: `stage|${o.id}|${next.nextStatus}|delivery` }]);
+          if (o.address) orderRows.push(deliveryRouteRow(o.address, lang));
+          return orderRows;
+        }),
         [{ text: t.tables.backButton, callback_data: "close" }],
       ],
     },
@@ -324,7 +336,7 @@ async function renderTable(
   const rows = orders as unknown as OrderRow[];
   const total = rows.reduce((sum, o) => sum + o.total, 0);
   const header = t.tableHeader(n, rows.length, formatPrice(total, "UZS"));
-  const blocks = rows.map((o, i) => formatOrderText(o, `${i + 1}) ${formatTime(o.created_at)}`, 0, lang));
+  const blocks = rows.map((o, i) => formatOrderText(o, `${i + 1}) ${formatTime(o.created_at)}`, lang));
 
   const markup: TgMarkup = {
     inline_keyboard: [

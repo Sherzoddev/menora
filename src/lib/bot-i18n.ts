@@ -182,7 +182,8 @@ export const STAFF_TEXT: Record<
       phone: string;
       address: string;
       comment: string;
-      queueNote: (count: number) => string;
+      routeGoogle: string;
+      routeYandex: string;
     };
     stats: { header: string; orders: string; revenue: string; avgCheck: string };
     prices: {
@@ -261,7 +262,8 @@ export const STAFF_TEXT: Record<
       phone: "Телефон",
       address: "Адрес",
       comment: "Комментарий",
-      queueNote: (count) => `\n\n…ещё ${count} заказ(ов) в очереди — отметьте этот выполненным, чтобы увидеть следующий`,
+      routeGoogle: "🗺 Маршрут (Google)",
+      routeYandex: "🗺 Маршрут (Яндекс)",
     },
     stats: { header: "📊 <b>Статистика за сегодня</b>", orders: "Заказов", revenue: "Выручка", avgCheck: "Средний чек" },
     prices: {
@@ -342,7 +344,8 @@ export const STAFF_TEXT: Record<
       phone: "Telefon",
       address: "Manzil",
       comment: "Izoh",
-      queueNote: (count) => `\n\n…yana ${count} ta buyurtma navbatda — keyingisini ko'rish uchun buni tayyor deb belgilang`,
+      routeGoogle: "🗺 Marshrut (Google)",
+      routeYandex: "🗺 Marshrut (Yandex)",
     },
     stats: { header: "📊 <b>Bugungi statistika</b>", orders: "Buyurtmalar", revenue: "Tushum", avgCheck: "O'rtacha chek" },
     prices: {

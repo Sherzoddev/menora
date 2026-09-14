@@ -391,7 +391,13 @@ export async function createOrder(
         fulfillmentLine +
         (comment ? `\nКомментарий: ${comment}` : "");
       const context = fulfillment === "dine_in" ? `table|${tableNumber}` : fulfillment === "delivery" ? "delivery" : "";
-      const markup = orderActionsMarkup(orderId, "new", context, resolveBotLang(venue.staff_bot_language));
+      const markup = orderActionsMarkup(
+        orderId,
+        "new",
+        context,
+        resolveBotLang(venue.staff_bot_language),
+        fulfillment === "delivery" ? address : null,
+      );
       await notifyStaff(venue.telegram_bot_token, venueId, venue.telegram_chat_id, text, markup);
     }
 
