@@ -248,7 +248,7 @@ function MenuContent({
     if (!els.length) return;
     const onScroll = () => {
       if (spyLocked.current) return;
-      const line = (navRef.current?.offsetHeight ?? 64) + 24;
+      const line = stickyOffset() + 24;
       let current = els[0].dataset.cat ?? null;
       for (const el of els) {
         if (el.getBoundingClientRect().top <= line) current = el.dataset.cat ?? current;
@@ -269,6 +269,14 @@ function MenuContent({
     strip.scrollTo({ left: tab.offsetLeft - strip.clientWidth / 2 + tab.clientWidth / 2, behavior: "smooth" });
   }, [activeId]);
 
+  // Сколько места сверху занимает прилипшая панель вкладок: её высота плюс
+  // отступ под шапку Telegram (--mn-safe-top).
+  function stickyOffset(): number {
+    const nav = navRef.current;
+    if (!nav) return 64;
+    return nav.offsetHeight + (parseFloat(getComputedStyle(nav).top) || 0);
+  }
+
   function goToCategory(id: string) {
     const el = document.getElementById(`cat-${id}`);
     if (!el) return;
@@ -277,7 +285,7 @@ function MenuContent({
       spyLocked.current = false;
     }, 900);
     setActiveId(id);
-    const offset = (navRef.current?.offsetHeight ?? 64) + 8;
+    const offset = stickyOffset() + 8;
     window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - offset, behavior: "smooth" });
   }
 
@@ -415,9 +423,12 @@ function MenuContent({
         {/* Вкладки категорий + поиск: прилипают к верху */}
         <div
           ref={navRef}
-          className="sticky top-0 z-30 mt-4 border-b border-[color:var(--mn-border)] backdrop-blur-xl"
+          className="sticky z-30 mt-4 border-b border-[color:var(--mn-border)] backdrop-blur-xl"
+          // Прилипает под шапкой Telegram (в полноэкранном режиме она
+          // перекрывает верх страницы). Раньше это был padding — он оставлял
+          // пустую полосу над вкладками ещё до прилипания.
           style={{
-            paddingTop: "var(--mn-safe-top)",
+            top: "var(--mn-safe-top)",
             background: "color-mix(in srgb, var(--mn-bg) 86%, transparent)",
           }}
         >
