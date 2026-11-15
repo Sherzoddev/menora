@@ -185,16 +185,33 @@ function MenuContent({
 
     // No-op outside Telegram — window.Telegram is only defined when this
     // page is opened as the venue's bot's Mini App (see [slug]/page.tsx).
-    const tg = window.Telegram?.WebApp;
-    tg?.ready();
-    tg?.expand();
-    // Без этого свайп вниз по меню закрывает весь Mini App — гость случайно
-    // сворачивает приложение, листая список блюд. disableVerticalSwipes
-    // (Bot API 7.7) убирает именно этот жест, requestFullscreen (8.0) ещё и
-    // прячет шапку Telegram сверху. Оба метода есть не во всех клиентах —
-    // isVersionAtLeast есть с 6.1, поэтому им можно проверять остальные.
-    if (tg?.isVersionAtLeast?.("7.7")) tg.disableVerticalSwipes?.();
-    if (tg?.isVersionAtLeast?.("8.0")) tg.requestFullscreen?.();
+    //
+    // Скрипт Telegram грузится с strategy="lazyOnload", то есть ПОСЛЕ этого
+    // эффекта — раньше window.Telegram в этот момент часто ещё не было, вызовы
+    // молча пропускались, и свайп вниз сворачивал/закрывал приложение.
+    // Поэтому ждём появления SDK и настраиваем окно, как только он готов.
+    let attempts = 0;
+    let done = false;
+    const setup = () => {
+      const tg = window.Telegram?.WebApp;
+      if (!tg || done) return !!tg;
+      done = true;
+      tg.ready();
+      tg.expand();
+      // disableVerticalSwipes (Bot API 7.7) убирает жест «потянуть вниз —
+      // свернуть Mini App», requestFullscreen (8.0) ещё и прячет шапку
+      // Telegram. Есть не во всех клиентах — проверяем версию.
+      if (tg.isVersionAtLeast?.("7.7")) tg.disableVerticalSwipes?.();
+      if (tg.isVersionAtLeast?.("8.0")) tg.requestFullscreen?.();
+      return true;
+    };
+    let timer: number | undefined;
+    if (!setup()) {
+      timer = window.setInterval(() => {
+        if (setup() || ++attempts > 150) window.clearInterval(timer);
+      }, 100);
+    }
+    return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

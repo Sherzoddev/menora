@@ -34,6 +34,12 @@ body {
      Telegram — всё, что прилипает к верху, отступает на эту высоту. */
   --mn-safe-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
 }
+/* Не даём «пружинить» и протягивать страницу за пределы — в том числе в
+   клиентах Telegram, где disableVerticalSwipes недоступен (до Bot API 7.7). */
+html:has(.mn-root),
+html:has(.mn-root) body {
+  overscroll-behavior-y: none;
+}
 .mn-display {
   font-family: var(--font-unbounded), var(--font-onest), system-ui, sans-serif;
   letter-spacing: -0.02em;
