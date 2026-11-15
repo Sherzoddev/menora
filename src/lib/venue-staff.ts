@@ -9,7 +9,7 @@
 // уведомления теперь уходят всем: и основному, и всем из venue_staff.
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendTelegramMessage, sendTelegramPhoto, type TgMarkup } from "@/lib/telegram";
+import { sendTelegramLocation, sendTelegramMessage, sendTelegramPhoto, type TgMarkup } from "@/lib/telegram";
 
 export async function fetchStaffChatIds(venueId: string, primaryChatId: number | null): Promise<number[]> {
   const admin = createAdminClient();
@@ -25,10 +25,14 @@ export async function notifyStaff(
   primaryChatId: number | null,
   text: string,
   markup?: TgMarkup,
+  // Точка доставки — уходит следом отдельной геометкой (ответом на сам
+  // заказ), чтобы её можно было переслать курьеру.
+  point?: { lat: number; lng: number } | null,
 ): Promise<void> {
   const ids = await fetchStaffChatIds(venueId, primaryChatId);
   for (const chatId of ids) {
-    await sendTelegramMessage(botToken, chatId, text, markup);
+    const sent = await sendTelegramMessage(botToken, chatId, text, markup);
+    if (point && sent) await sendTelegramLocation(botToken, chatId, point, sent.message_id);
   }
 }
 

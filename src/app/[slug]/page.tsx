@@ -2,9 +2,20 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Script from "next/script";
 import { createClient } from "@/lib/supabase/server";
+import { Onest, Unbounded } from "next/font/google";
 import MenuView from "./menu-view";
 
 export const dynamic = "force-dynamic";
+
+// Шрифты только публичного меню (кабинет и лендинг живут на своих): оба с
+// кириллицей и узбекской латиницей. Подключаются через CSS-переменные —
+// см. .mn-root / .mn-display в globals.css.
+const onest = Onest({ subsets: ["latin", "latin-ext", "cyrillic"], variable: "--font-onest", display: "swap" });
+const unbounded = Unbounded({
+  subsets: ["latin", "latin-ext", "cyrillic"],
+  variable: "--font-unbounded",
+  display: "swap",
+});
 
 // Explicit column list — never select("*") here: venues also carries
 // telegram_chat_id/telegram_connect_code, which must not reach the public
@@ -79,13 +90,15 @@ export default async function PublicMenuPage({
           text content) if it runs any earlier than the window "load" event —
           it isn't needed before then anyway, only before checkout. */}
       <Script src="https://telegram.org/js/telegram-web-app.js" strategy="lazyOnload" />
-      <MenuView
-        venue={data.venue}
-        categories={data.categories}
-        dishes={data.dishes}
-        source={src}
-        table={table}
-      />
+      <div className={`${onest.variable} ${unbounded.variable}`}>
+        <MenuView
+          venue={data.venue}
+          categories={data.categories}
+          dishes={data.dishes}
+          source={src}
+          table={table}
+        />
+      </div>
     </>
   );
 }

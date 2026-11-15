@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   sendTelegramMessage,
   sendTelegramPhoto,
+  sendTelegramLocation,
   editTelegramMessage,
   answerTelegramCallback,
   setChatMenuButton,
@@ -21,8 +22,10 @@ import {
   priceDishesMarkup,
   stageButtonFor,
   radiusPickerMarkup,
-  deliveryRouteRow,
+  deliveryPinRow,
+  orderActionsMarkup,
 } from "@/lib/telegram-keyboard";
+import { parseAddress } from "@/lib/order-address";
 import { formatPrice, formatTime } from "@/lib/menu-utils";
 import { fetchStaffChatIds, notifyStaff } from "@/lib/venue-staff";
 import { advanceOrderStatus, type OrderStatus } from "@/lib/order-status";
@@ -231,13 +234,21 @@ function formatOrderText(o: OrderRow, header: string, lang: BotLang) {
   return (
     `${header} · ${stageLabel}\n🕐 ${t.orderedAt} ${formatTime(o.created_at)}\n\n${lines.join("\n")}\n\n${t.total}: <b>${formatPrice(o.total, "UZS")}</b>\n` +
     `${t.name}: ${o.customer_name}\n${t.phone}: ${o.phone}` +
-    (o.address ? `\n${t.address}: ${o.address}` : "") +
+    (o.address ? `\n${t.address}: ${formatAddressLine(o.address)}` : "") +
     (o.comment ? `\n${t.comment}: ${o.comment}` : "")
   );
 }
 
+// Адрес для текста сообщения: без служебного хвоста с координатами (см.
+// lib/order-address.ts). Сама точка уходит курьеру геолокацией Telegram.
+function formatAddressLine(stored: string): string {
+  const { text, point } = parseAddress(stored);
+  return text || (point ? "📍" : "");
+}
+
 function truncateAddress(address: string, max = 32): string {
-  return address.length > max ? `${address.slice(0, max - 1)}…` : address;
+  const text = parseAddress(address).text || "📍";
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 // Список активных доставок — раньше показывался только самый старый заказ
@@ -273,13 +284,18 @@ async function renderDelivery(
     text: `${t.delivery.header(rows.length)}\n\n${summaryLines.join("\n")}`,
     markup: {
       inline_keyboard: [
+        // Статус в начале кнопки (📝 принят / 🍳 готовится / ✅ готов) — по
+        // списку сразу видно, какой заказ ждёт, а какой уже собран.
         ...rows.map((o, i) => [
           {
-            text: `${i + 1}) ${o.address ? truncateAddress(o.address) : o.customer_name}`,
+            text: `${(stagesT[o.status] ?? "").split(" ")[0]} ${i + 1}) ${o.address ? truncateAddress(o.address) : o.customer_name}`.trim(),
             callback_data: `deliveryorder|${o.id}`,
           },
         ]),
-        [{ text: t.tables.backButton, callback_data: "close" }],
+        [
+          { text: t.delivery.refresh, callback_data: "delivery" },
+          { text: t.tables.backButton, callback_data: "close" },
+        ],
       ],
     },
   };
@@ -310,7 +326,8 @@ async function renderDeliveryOrder(
   // callback_data длиннее 64 байт, а тут и так уже есть orderId в parts[1],
   // дублировать его в context незачем.
   if (next) rows.push([{ text: next.label, callback_data: `stage|${o.id}|${next.nextStatus}|do` }]);
-  if (o.address) rows.push(deliveryRouteRow(o.address, lang));
+  const pinRow = deliveryPinRow(o.id, o.address, lang);
+  if (pinRow) rows.push(pinRow);
   rows.push([{ text: t.tables.backButton, callback_data: "delivery" }]);
 
   return {
@@ -480,11 +497,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
         // в конец, следующая кнопка (если ещё есть шаг) остаётся на месте.
         const originalText = String(cb.message?.text ?? "");
         const stageLabel = (stagesT as unknown as Record<string, string>)[newStatus];
-        const next = stageButtonFor(newStatus, staffLang);
-        const newMarkup: TgMarkup = next
-          ? { inline_keyboard: [[{ text: next.label, callback_data: `stage|${orderId}|${next.nextStatus}|` }]] }
-          : emptyMarkup();
+        // Кнопка геолокации остаётся под заказом на всех стадиях — курьера
+        // отправляют уже после «Готов», а точка нужна именно тогда.
+        const { data: stageOrder } = await admin
+          .from("orders")
+          .select("address")
+          .eq("id", orderId)
+          .eq("venue_id", venueId)
+          .maybeSingle();
+        const newMarkup = orderActionsMarkup(orderId, newStatus, "", staffLang, stageOrder?.address);
         await editTelegramMessage(token, chatId, messageId, `${originalText}\n\n${stageLabel}`, newMarkup);
+      }
+    } else if (action === "loc") {
+      // Геометка заказа отдельным сообщением — её пересылают курьеру. Только
+      // персоналу заведения: точка — это домашний адрес гостя.
+      const staffIds = await fetchStaffChatIds(venueId, venue.telegram_chat_id);
+      const { data: locOrder } = staffIds.includes(chatId)
+        ? await admin.from("orders").select("address").eq("id", parts[1]).eq("venue_id", venueId).maybeSingle()
+        : { data: null };
+      const point = parseAddress(locOrder?.address).point;
+      if (point) {
+        await sendTelegramLocation(token, chatId, point, messageId);
+        toast = STAFF_TEXT[staffLang].order.pinSent;
+      } else {
+        toast = STAFF_TEXT[staffLang].order.pinMissing;
       }
     } else if (action === "cancel") {
       const orderId = parts[1];

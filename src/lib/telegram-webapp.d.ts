@@ -8,6 +8,9 @@ declare global {
     Telegram?: {
       WebApp?: {
         initData: string;
+        // Unverified client-side copy of the user — fine for prefilling a
+        // form field, never for anything that needs trust (that's initData).
+        initDataUnsafe?: { user?: { first_name?: string; last_name?: string } };
         ready: () => void;
         expand: () => void;
         // Bot API 7.7+/8.0+ — older Telegram clients don't have these, so

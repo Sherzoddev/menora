@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { markOrderDone, markOrderSent, deleteOrder } from "@/lib/orders-actions";
 import { formatPrice } from "@/lib/menu-utils";
+import { parseAddress, routeUrls } from "@/lib/order-address";
 import { ConfirmButton } from "@/components/confirm-button";
 import { Trash2 } from "lucide-react";
 
@@ -27,10 +28,23 @@ export default async function AdminOrdersPage({ params }: { params: Promise<{ id
                 <p className="text-xs text-neutral-500">
                   {new Date(o.created_at).toLocaleString("ru-RU")} ·{" "}
                   {o.fulfillment === "delivery"
-                    ? `Доставка: ${o.address}`
+                    ? `Доставка: ${parseAddress(o.address).text || "по точке на карте"}`
                     : o.fulfillment === "dine_in"
                       ? `За столом: ${o.table_number}`
                       : "Самовывоз"}
+                  {o.fulfillment === "delivery" && parseAddress(o.address).point && (
+                    <>
+                      {" · "}
+                      <a
+                        href={routeUrls(o.address ?? "").yandex}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-amber-400 underline underline-offset-2"
+                      >
+                        📍 маршрут
+                      </a>
+                    </>
+                  )}
                 </p>
               </div>
               <div className="flex items-center gap-2">

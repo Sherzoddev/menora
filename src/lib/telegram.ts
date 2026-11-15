@@ -34,6 +34,28 @@ export async function sendTelegramMessage(
   }
 }
 
+// Нативная геометка Telegram — её можно переслать курьеру одним тапом, и она
+// открывается в любом навигаторе на его телефоне. Best-effort, как и текст.
+export async function sendTelegramLocation(
+  botToken: string,
+  chatId: number,
+  point: { lat: number; lng: number },
+  replyToMessageId?: number,
+): Promise<void> {
+  await fetch(`${API_BASE}/bot${botToken}/sendLocation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      latitude: point.lat,
+      longitude: point.lng,
+      ...(replyToMessageId
+        ? { reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } }
+        : {}),
+    }),
+  }).catch(() => {});
+}
+
 export async function editTelegramMessage(
   botToken: string,
   chatId: number,

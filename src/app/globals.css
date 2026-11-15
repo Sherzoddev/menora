@@ -25,6 +25,122 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* ───── Публичное меню ([slug]) ─────
+   Цвета приходят через --mn-* с корневого элемента (lib/menu-theme.ts). */
+.mn-root {
+  font-family: var(--font-onest), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  /* В Telegram Mini App в полноэкранном режиме сверху лежат кнопки самого
+     Telegram — всё, что прилипает к верху, отступает на эту высоту. */
+  --mn-safe-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
+}
+.mn-display {
+  font-family: var(--font-unbounded), var(--font-onest), system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+.mn-noscroll {
+  scrollbar-width: none;
+}
+.mn-noscroll::-webkit-scrollbar {
+  display: none;
+}
+.mn-press {
+  transition: transform 0.12s ease;
+}
+.mn-press:active {
+  transform: scale(0.96);
+}
+.mn-field {
+  width: 100%;
+  border-radius: 16px;
+  border: 1.5px solid var(--mn-border);
+  background: var(--mn-input);
+  padding: 13px 14px;
+  font-size: 16px; /* меньше 16px — iOS зумит страницу при фокусе */
+  color: var(--mn-text);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.mn-field::placeholder {
+  color: var(--mn-muted-light);
+}
+.mn-field:focus {
+  border-color: var(--mn-accent);
+}
+
+@keyframes mn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes mn-sheet {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes mn-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes mn-pop {
+  0% {
+    transform: scale(0.86);
+  }
+  60% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes mn-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--mn-accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 14px transparent;
+  }
+}
+/* Без fill-mode forwards: пока анимация transform «держит» элемент, он
+   становится контейнером для position: fixed — и полноэкранная карта,
+   открытая из шторки корзины, обрезалась бы по размеру самой шторки. */
+.mn-rise {
+  animation: mn-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.mn-sheet {
+  animation: mn-sheet 0.34s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.mn-fade {
+  animation: mn-fade 0.22s ease;
+}
+.mn-pop {
+  animation: mn-pop 0.28s ease;
+}
+.mn-pulse {
+  animation: mn-pulse 1.6s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mn-rise,
+  .mn-sheet,
+  .mn-fade,
+  .mn-pop,
+  .mn-pulse {
+    animation: none;
+  }
+}
+
 .input {
   width: 100%;
   border-radius: 0.5rem;

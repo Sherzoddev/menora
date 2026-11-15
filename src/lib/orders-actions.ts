@@ -13,6 +13,7 @@ import { pushOrderToVelora } from "@/lib/velora-actions";
 import { notifyStaff } from "@/lib/venue-staff";
 import { advanceOrderStatus, sendOrderTracker } from "@/lib/order-status";
 import { distanceKm } from "@/lib/geo";
+import { composeAddress, isValidPoint, parseAddress } from "@/lib/order-address";
 
 // Промокоды и баллы лояльности живут в таблицах без публичной RLS-policy
 // (см. createOrder ниже), поэтому гость не может посчитать скидку сам — эта
@@ -95,7 +96,10 @@ export async function createOrder(
   const customerName = String(formData.get("customer_name") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
   const fulfillment = String(formData.get("fulfillment") ?? "delivery");
-  const address = String(formData.get("address") ?? "").trim();
+  const addressText = String(formData.get("address") ?? "").trim();
+  // Ориентир / подъезд / квартира — то, что помогает курьеру на последних
+  // метрах, когда точка на карте уже привела его к дому.
+  const addressDetails = String(formData.get("address_details") ?? "").trim();
   const tableNumber = String(formData.get("table_number") ?? "").trim();
   const comment = String(formData.get("comment") ?? "").trim();
   const promoInput = String(formData.get("promo_code") ?? "").trim();
@@ -105,6 +109,13 @@ export async function createOrder(
   const tgInitData = String(formData.get("tg_init_data") ?? "").trim();
   const customerLat = formData.get("customer_lat") ? Number(formData.get("customer_lat")) : null;
   const customerLng = formData.get("customer_lng") ? Number(formData.get("customer_lng")) : null;
+  const deliveryPoint =
+    fulfillment === "delivery" && isValidPoint(customerLat, customerLng)
+      ? { lat: customerLat as number, lng: customerLng as number }
+      : null;
+  // В orders.address точка гостя сохраняется вместе с текстом — по ней
+  // курьеру строится маршрут и уходит геометка (см. lib/order-address.ts).
+  const address = composeAddress(addressText, addressDetails, deliveryPoint);
 
   if (!customerName) return { error: "Введите имя" };
   if (!phone) return { error: "Введите телефон" };
@@ -373,7 +384,8 @@ export async function createOrder(
       const lines = items.map((i) => `• ${i.name} × ${i.qty} — ${formatPrice(i.price * i.qty, "UZS")}`);
       const fulfillmentLine =
         fulfillment === "delivery"
-          ? `Доставка: ${address}`
+          ? `Доставка: ${parseAddress(address).text || "по точке на карте"}` +
+            (deliveryPoint ? "\n📍 Геолокация — следующим сообщением 👇" : "")
           : fulfillment === "dine_in"
             ? `За столом: ${tableNumber}`
             : "Самовывоз";
@@ -390,7 +402,9 @@ export async function createOrder(
         `Имя: ${customerName}\nТелефон: ${phone}\n` +
         fulfillmentLine +
         (comment ? `\nКомментарий: ${comment}` : "");
-      const context = fulfillment === "dine_in" ? `table|${tableNumber}` : fulfillment === "delivery" ? "delivery" : "";
+      // Пустой контекст у доставки: нажатие кнопки стадии дописывает статус в
+      // само сообщение заказа, а не подменяет его общим списком доставок.
+      const context = fulfillment === "dine_in" ? `table|${tableNumber}` : "";
       const markup = orderActionsMarkup(
         orderId,
         "new",
@@ -398,7 +412,7 @@ export async function createOrder(
         resolveBotLang(venue.staff_bot_language),
         fulfillment === "delivery" ? address : null,
       );
-      await notifyStaff(venue.telegram_bot_token, venueId, venue.telegram_chat_id, text, markup);
+      await notifyStaff(venue.telegram_bot_token, venueId, venue.telegram_chat_id, text, markup, deliveryPoint);
     }
 
     if (venue?.telegram_bot_token && customerTelegramChatId) {

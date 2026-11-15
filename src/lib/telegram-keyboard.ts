@@ -1,5 +1,6 @@
 import type { TgMarkup } from "./telegram";
 import { BOT_TEXT, STAFF_TEXT, FEEDBACK_TAG_KEYS, LANGUAGE_NAMES, feedbackTagLabel, type BotLang } from "./bot-i18n";
+import { parseAddress } from "./order-address";
 
 // Fixed table range for the bot's "Столы"/"Stollar" menu — matches how
 // venues currently number their tables when generating table QR codes. Not
@@ -64,17 +65,14 @@ export function stageButtonFor(
   return null;
 }
 
-// Курьеру нужен не просто текст адреса, а рабочий маршрут одним тапом.
-// Координат гостя мы не храним (см. checkout-form.tsx — они нужны только
-// для проверки радиуса и никуда дальше не сохраняются), поэтому строим
-// ссылку прямо по тексту адреса — оба сервиса резолвят обычный адрес как
-// пункт назначения, и обе карты сами берут текущее место курьера как старт.
-export function deliveryRouteRow(address: string, lang: BotLang): { text: string; url: string }[] {
-  const t = STAFF_TEXT[lang].order;
-  return [
-    { text: t.routeGoogle, url: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}` },
-    { text: t.routeYandex, url: `https://yandex.ru/maps/?rtext=~${encodeURIComponent(address)}&rtt=auto` },
-  ];
+// Курьеру нужна не ссылка на конкретную карту, а нативная геолокация
+// Telegram: её пересылают курьеру одним тапом, и она открывается в том
+// навигаторе, который у него стоит. Кнопка есть только у заказов, где гость
+// поставил точку на карте (см. lib/order-address.ts) — у старых заказов и
+// самовывоза точки нет.
+export function deliveryPinRow(orderId: string, address: string | null | undefined, lang: BotLang): { text: string; callback_data: string }[] | null {
+  if (!parseAddress(address).point) return null;
+  return [{ text: STAFF_TEXT[lang].order.sendPin, callback_data: `loc|${orderId}` }];
 }
 
 export function orderActionsMarkup(
@@ -84,12 +82,14 @@ export function orderActionsMarkup(
   lang: BotLang,
   address?: string | null,
 ): TgMarkup {
-  const backTarget = context.startsWith("table|") ? "tables" : "close";
   const next = stageButtonFor(status, lang);
   const rows: { text: string; callback_data?: string; url?: string }[][] = [];
   if (next) rows.push([{ text: next.label, callback_data: `stage|${orderId}|${next.nextStatus}|${context}` }]);
-  if (address) rows.push(deliveryRouteRow(address, lang));
-  rows.push([{ text: STAFF_TEXT[lang].tables.backButton, callback_data: backTarget }]);
+  const pinRow = deliveryPinRow(orderId, address, lang);
+  if (pinRow) rows.push(pinRow);
+  // «Назад» нужен только в списке столов. У нового заказа, пришедшего
+  // отдельным сообщением, он раньше стирал сам заказ ("Меню открыто внизу").
+  if (context.startsWith("table|")) rows.push([{ text: STAFF_TEXT[lang].tables.backButton, callback_data: "tables" }]);
   return { inline_keyboard: rows };
 }
 

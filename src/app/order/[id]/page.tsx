@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatPrice, formatTime } from "@/lib/menu-utils";
+import { parseAddress } from "@/lib/order-address";
 import { OrderTracker } from "./order-tracker";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
         <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm">
           <p className="mb-2 text-xs font-medium text-[#8a7a63]">
             {order.fulfillment === "delivery"
-              ? `Доставка: ${order.address}`
+              ? `Доставка: ${parseAddress(order.address).text || "по точке на карте"}`
               : order.fulfillment === "dine_in"
                 ? `За столом №${order.table_number}`
                 : "Самовывоз"}

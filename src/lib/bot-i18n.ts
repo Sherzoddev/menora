@@ -174,6 +174,7 @@ export const STAFF_TEXT: Record<
     delivery: {
       header: (count: number) => string;
       noOrders: string;
+      refresh: string;
     };
     order: {
       orderedAt: string;
@@ -182,8 +183,9 @@ export const STAFF_TEXT: Record<
       phone: string;
       address: string;
       comment: string;
-      routeGoogle: string;
-      routeYandex: string;
+      sendPin: string;
+      pinSent: string;
+      pinMissing: string;
     };
     stats: { header: string; orders: string; revenue: string; avgCheck: string };
     prices: {
@@ -254,6 +256,7 @@ export const STAFF_TEXT: Record<
     delivery: {
       header: (count) => `🚚 Доставка (${count})`,
       noOrders: "🚚 Доставка\n\nЗаказов нет.",
+      refresh: "🔄 Обновить",
     },
     order: {
       orderedAt: "Заказано в",
@@ -262,8 +265,9 @@ export const STAFF_TEXT: Record<
       phone: "Телефон",
       address: "Адрес",
       comment: "Комментарий",
-      routeGoogle: "🗺 Маршрут (Google)",
-      routeYandex: "🗺 Маршрут (Яндекс)",
+      sendPin: "📍 Геолокация",
+      pinSent: "Геолокация отправлена — перешлите её курьеру 📍",
+      pinMissing: "У этого заказа нет точки на карте",
     },
     stats: { header: "📊 <b>Статистика за сегодня</b>", orders: "Заказов", revenue: "Выручка", avgCheck: "Средний чек" },
     prices: {
@@ -336,6 +340,7 @@ export const STAFF_TEXT: Record<
     delivery: {
       header: (count) => `🚚 Yetkazish (${count})`,
       noOrders: "🚚 Yetkazish\n\nBuyurtmalar yo'q.",
+      refresh: "🔄 Yangilash",
     },
     order: {
       orderedAt: "Buyurtma vaqti",
@@ -344,8 +349,9 @@ export const STAFF_TEXT: Record<
       phone: "Telefon",
       address: "Manzil",
       comment: "Izoh",
-      routeGoogle: "🗺 Marshrut (Google)",
-      routeYandex: "🗺 Marshrut (Yandex)",
+      sendPin: "📍 Geolokatsiya",
+      pinSent: "Geolokatsiya yuborildi — uni kuryerga uzating 📍",
+      pinMissing: "Bu buyurtmada xaritadagi nuqta yo'q",
     },
     stats: { header: "📊 <b>Bugungi statistika</b>", orders: "Buyurtmalar", revenue: "Tushum", avgCheck: "O'rtacha chek" },
     prices: {
